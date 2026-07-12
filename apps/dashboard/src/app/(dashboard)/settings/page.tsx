@@ -132,6 +132,22 @@ function findStringValue(value: unknown, keys: string[]): string | undefined {
   return undefined;
 }
 
+function normalizeEmbeddedSignupMessage(value: unknown): Record<string, unknown> | null {
+  const record = parseRecord(value);
+  if (!record) return null;
+
+  if (record.type === "WA_EMBEDDED_SIGNUP") {
+    return record;
+  }
+
+  const nestedData = parseRecord(record.data);
+  if (nestedData?.type === "WA_EMBEDDED_SIGNUP") {
+    return nestedData;
+  }
+
+  return null;
+}
+
 function loadFacebookSdk() {
   return new Promise<void>((resolve, reject) => {
     if (window.FB) {
@@ -190,9 +206,23 @@ export default function SettingsPage() {
       const origin = event.origin.toLowerCase();
       if (!origin.includes("facebook.com")) return;
       const data = parseRecord(event.data);
-      if (data) {
-        signupMessageRef.current = data;
-        signupMessageResolverRef.current?.(data);
+      const embeddedSignupMessage = normalizeEmbeddedSignupMessage(data);
+      if (embeddedSignupMessage) {
+        signupMessageRef.current = embeddedSignupMessage;
+
+        const eventName = findStringValue(embeddedSignupMessage, ["event"]);
+        const hasPhoneNumberId = Boolean(findStringValue(embeddedSignupMessage, ["phone_number_id", "phoneNumberId"]));
+        const hasWabaId = Boolean(findStringValue(embeddedSignupMessage, ["waba_id", "wabaId", "whatsapp_business_account_id"]));
+
+        console.info("Meta Embedded Signup message", {
+          event: eventName,
+          hasPhoneNumberId,
+          hasWabaId
+        });
+
+        if (eventName === "FINISH" || eventName === "CANCEL" || eventName === "ERROR" || (hasPhoneNumberId && hasWabaId)) {
+          signupMessageResolverRef.current?.(embeddedSignupMessage);
+        }
       }
     }
 
@@ -263,7 +293,7 @@ export default function SettingsPage() {
         const timeout = window.setTimeout(() => {
           signupMessageResolverRef.current = null;
           resolve(signupMessageRef.current);
-        }, 8000);
+        }, 30000);
 
         signupMessageResolverRef.current = (message) => {
           window.clearTimeout(timeout);
@@ -292,13 +322,31 @@ export default function SettingsPage() {
       }
 
       const expiresIn = response.authResponse.expiresIn;
+      const selectedPhoneNumberId = findStringValue(embeddedSignupResult, ["phone_number_id", "phoneNumberId"]);
+      const selectedWabaId = findStringValue(embeddedSignupResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
+      const selectedBusinessId = findStringValue(embeddedSignupResult, ["business_id", "businessId"]);
+
+      console.info("Meta Embedded Signup callback payload readiness", {
+        hasCode: Boolean(response.authResponse.code),
+        hasAccessToken: Boolean(response.authResponse.accessToken),
+        hasPhoneNumberId: Boolean(selectedPhoneNumberId),
+        hasWabaId: Boolean(selectedWabaId),
+        hasBusinessId: Boolean(selectedBusinessId)
+      });
+
+      if (!selectedPhoneNumberId || !selectedWabaId) {
+        setNotice(null);
+        setError("Meta did not return the selected WhatsApp account. Please complete the phone number selection in the popup and try again.");
+        return;
+      }
+
       const callbackPayload = {
         ...(response.authResponse.code ? { code: response.authResponse.code } : {}),
         ...(response.authResponse.accessToken ? { accessToken: response.authResponse.accessToken } : {}),
         ...(typeof expiresIn === "number" && expiresIn > 0 ? { expiresIn } : {}),
-        ...(findStringValue(embeddedSignupResult, ["phone_number_id", "phoneNumberId"]) ? { phoneNumberId: findStringValue(embeddedSignupResult, ["phone_number_id", "phoneNumberId"]) } : {}),
-        ...(findStringValue(embeddedSignupResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]) ? { wabaId: findStringValue(embeddedSignupResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]) } : {}),
-        ...(findStringValue(embeddedSignupResult, ["business_id", "businessId"]) ? { businessId: findStringValue(embeddedSignupResult, ["business_id", "businessId"]) } : {}),
+        phoneNumberId: selectedPhoneNumberId,
+        wabaId: selectedWabaId,
+        ...(selectedBusinessId ? { businessId: selectedBusinessId } : {}),
         rawResult: {
           facebookLogin: response,
           embeddedSignup: embeddedSignupResult
