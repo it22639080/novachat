@@ -334,18 +334,12 @@ export default function SettingsPage() {
         hasBusinessId: Boolean(selectedBusinessId)
       });
 
-      if (!selectedPhoneNumberId || !selectedWabaId) {
-        setNotice(null);
-        setError("Meta did not return the selected WhatsApp account. Please complete the phone number selection in the popup and try again.");
-        return;
-      }
-
       const callbackPayload = {
         ...(response.authResponse.code ? { code: response.authResponse.code } : {}),
         ...(response.authResponse.accessToken ? { accessToken: response.authResponse.accessToken } : {}),
         ...(typeof expiresIn === "number" && expiresIn > 0 ? { expiresIn } : {}),
-        phoneNumberId: selectedPhoneNumberId,
-        wabaId: selectedWabaId,
+        ...(selectedPhoneNumberId ? { phoneNumberId: selectedPhoneNumberId } : {}),
+        ...(selectedWabaId ? { wabaId: selectedWabaId } : {}),
         ...(selectedBusinessId ? { businessId: selectedBusinessId } : {}),
         rawResult: {
           facebookLogin: response,
