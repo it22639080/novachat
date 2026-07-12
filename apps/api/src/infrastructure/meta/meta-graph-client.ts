@@ -107,7 +107,6 @@ export class MetaGraphClient {
     const url = graphUrl("oauth/access_token", {
       client_id: env.META_APP_ID ?? "",
       client_secret: env.META_APP_SECRET ?? "",
-      redirect_uri: env.META_REDIRECT_URI ?? "",
       code
     });
 
