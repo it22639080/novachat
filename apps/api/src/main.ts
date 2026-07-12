@@ -70,7 +70,9 @@ async function bootstrap() {
         hasMetaConfigId: Boolean(env.META_CONFIG_ID),
         hasMetaAppSecret: Boolean(env.META_APP_SECRET),
         hasMetaWebhookVerifyToken: Boolean(env.META_WEBHOOK_VERIFY_TOKEN),
-        hasMetaSystemUserToken: Boolean(env.META_SYSTEM_USER_ACCESS_TOKEN)
+        hasMetaSystemUserToken: Boolean(env.META_SYSTEM_USER_ACCESS_TOKEN),
+        coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+        embeddedSignupFeatureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null
       },
       "Meta Embedded Signup configuration loaded"
     );

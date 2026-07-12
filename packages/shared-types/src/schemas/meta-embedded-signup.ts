@@ -22,6 +22,7 @@ export const metaEmbeddedSignupCallbackSchema = z.object({
   displayPhoneNumber: z.string().trim().min(6).max(32).optional(),
   verifiedName: z.string().trim().max(120).optional(),
   qualityRating: z.string().trim().max(80).optional(),
+  onboardingMode: z.enum(["EMBEDDED_SIGNUP", "BUSINESS_APP_COEXISTENCE"]).optional(),
   expiresIn: optionalPositiveInt,
   rawResult: z.record(z.unknown()).optional()
 }).refine((value) => value.code || value.accessToken, {

@@ -63,6 +63,8 @@ type MetaConfig = {
   configId: string | null;
   apiVersion: string;
   redirectUri: string | null;
+  coexistenceOnboardingEnabled: boolean;
+  featureType: string | null;
   embeddedSignupEnabled: boolean;
 };
 
@@ -211,16 +213,21 @@ export default function SettingsPage() {
         signupMessageRef.current = embeddedSignupMessage;
 
         const eventName = findStringValue(embeddedSignupMessage, ["event"]);
-        const hasPhoneNumberId = Boolean(findStringValue(embeddedSignupMessage, ["phone_number_id", "phoneNumberId"]));
-        const hasWabaId = Boolean(findStringValue(embeddedSignupMessage, ["waba_id", "wabaId", "whatsapp_business_account_id"]));
+        const phoneNumberId = findStringValue(embeddedSignupMessage, ["phone_number_id", "phoneNumberId"]);
+        const wabaId = findStringValue(embeddedSignupMessage, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
+        const businessId = findStringValue(embeddedSignupMessage, ["business_id", "businessId"]);
 
         console.info("Meta Embedded Signup message", {
           event: eventName,
-          hasPhoneNumberId,
-          hasWabaId
+          phoneNumberId: phoneNumberId ?? null,
+          wabaId: wabaId ?? null,
+          businessId: businessId ?? null,
+          hasPhoneNumberId: Boolean(phoneNumberId),
+          hasWabaId: Boolean(wabaId),
+          hasBusinessId: Boolean(businessId)
         });
 
-        if (eventName === "FINISH" || eventName === "CANCEL" || eventName === "ERROR" || (hasPhoneNumberId && hasWabaId)) {
+        if (eventName === "FINISH" || eventName === "CANCEL" || eventName === "ERROR" || (phoneNumberId && wabaId)) {
           signupMessageResolverRef.current?.(embeddedSignupMessage);
         }
       }
@@ -289,6 +296,15 @@ export default function SettingsPage() {
         cookie: false
       });
 
+      console.info("Launching Meta Embedded Signup", {
+        appId: metaConfig.appId,
+        configId: metaConfig.configId,
+        apiVersion: metaConfig.apiVersion,
+        redirectUri: metaConfig.redirectUri,
+        coexistenceOnboardingEnabled: metaConfig.coexistenceOnboardingEnabled,
+        featureType: metaConfig.featureType
+      });
+
       const signupMessagePromise = new Promise<Record<string, unknown> | null>((resolve) => {
         const timeout = window.setTimeout(() => {
           signupMessageResolverRef.current = null;
@@ -302,15 +318,21 @@ export default function SettingsPage() {
         };
       });
 
+      const extras: Record<string, unknown> = {
+        setup: {},
+        sessionInfoVersion: "3"
+      };
+
+      if (metaConfig.featureType) {
+        extras.featureType = metaConfig.featureType;
+      }
+
       const response = await new Promise<FacebookLoginResponse>((resolve) => {
         window.FB?.login(resolve, {
           config_id: metaConfig.configId,
           response_type: "code",
           override_default_response_type: true,
-          extras: {
-            setup: {},
-            sessionInfoVersion: "3"
-          }
+          extras
         });
       });
       const embeddedSignupResult = await signupMessagePromise;
@@ -329,6 +351,7 @@ export default function SettingsPage() {
       console.info("Meta Embedded Signup callback payload readiness", {
         hasCode: Boolean(response.authResponse.code),
         hasAccessToken: Boolean(response.authResponse.accessToken),
+        coexistenceOnboardingEnabled: metaConfig.coexistenceOnboardingEnabled,
         hasPhoneNumberId: Boolean(selectedPhoneNumberId),
         hasWabaId: Boolean(selectedWabaId),
         hasBusinessId: Boolean(selectedBusinessId)
@@ -341,9 +364,18 @@ export default function SettingsPage() {
         ...(selectedPhoneNumberId ? { phoneNumberId: selectedPhoneNumberId } : {}),
         ...(selectedWabaId ? { wabaId: selectedWabaId } : {}),
         ...(selectedBusinessId ? { businessId: selectedBusinessId } : {}),
+        onboardingMode: metaConfig.coexistenceOnboardingEnabled ? "BUSINESS_APP_COEXISTENCE" : "EMBEDDED_SIGNUP",
         rawResult: {
           facebookLogin: response,
-          embeddedSignup: embeddedSignupResult
+          embeddedSignup: embeddedSignupResult,
+          novaChat: {
+            appId: metaConfig.appId,
+            configId: metaConfig.configId,
+            apiVersion: metaConfig.apiVersion,
+            redirectUri: metaConfig.redirectUri,
+            coexistenceOnboardingEnabled: metaConfig.coexistenceOnboardingEnabled,
+            featureType: metaConfig.featureType
+          }
         }
       };
 
@@ -514,8 +546,17 @@ export default function SettingsPage() {
                   <div>
                     <p className="font-medium">Meta Embedded Signup</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      {metaConfig?.embeddedSignupEnabled ? "Configured and ready for client onboarding." : "Waiting for Meta app configuration."}
+                      {metaConfig?.embeddedSignupEnabled
+                        ? metaConfig.coexistenceOnboardingEnabled
+                          ? "Configured for WhatsApp Business App coexistence onboarding."
+                          : "Configured and ready for client onboarding."
+                        : "Waiting for Meta app configuration."}
                     </p>
+                    {metaConfig?.embeddedSignupEnabled ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        App {metaConfig.appId ?? "not set"} / Config {metaConfig.configId ?? "not set"}
+                      </p>
+                    ) : null}
                   </div>
                   <Button type="button" onClick={connectAutomatically} disabled={submitting || loading || !metaConfig?.embeddedSignupEnabled}>
                     <Link2 className="h-4 w-4" aria-hidden="true" />

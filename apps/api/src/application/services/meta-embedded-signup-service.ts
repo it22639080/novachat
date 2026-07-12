@@ -87,6 +87,8 @@ export class MetaEmbeddedSignupService {
       configId: env.META_CONFIG_ID ?? null,
       apiVersion: env.META_API_VERSION,
       redirectUri: env.META_REDIRECT_URI ?? null,
+      coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+      featureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null,
       embeddedSignupEnabled: env.META_EMBEDDED_SIGNUP_ENABLED && metaGraphClient.isConfigured
     };
   }
@@ -110,7 +112,12 @@ export class MetaEmbeddedSignupService {
         hasSystemUserToken: Boolean(env.META_SYSTEM_USER_ACCESS_TOKEN),
         hasPhoneNumberId: Boolean(phoneNumberId),
         hasWabaId: Boolean(wabaId),
-        hasBusinessId: Boolean(metaBusinessId)
+        hasBusinessId: Boolean(metaBusinessId),
+        appId: env.META_APP_ID ?? null,
+        configId: env.META_CONFIG_ID ?? null,
+        coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+        embeddedSignupFeatureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null,
+        onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP"
       },
       "Meta Embedded Signup callback received"
     );
@@ -175,47 +182,58 @@ export class MetaEmbeddedSignupService {
       }
 
       if (!phoneNumberId || !wabaId) {
-        const existingAccounts = await prisma.whatsAppAccount.findMany({
-          where: {
-            tenantId,
-            deletedAt: null,
-            status: { not: "DISCONNECTED" }
-          },
-          select: {
-            businessAccountId: true,
-            phoneNumberId: true,
-            metaBusinessId: true,
-            wabaId: true
-          }
-        });
+        if (!env.META_ALLOW_EXISTING_WHATSAPP_FALLBACK) {
+          logger.warn(
+            { tenantId },
+            "Existing WhatsApp account fallback skipped because META_ALLOW_EXISTING_WHATSAPP_FALLBACK is disabled"
+          );
+        }
 
-        if (existingAccounts.length === 1) {
-          const existingAccount = existingAccounts[0];
-          if (existingAccount) {
-            phoneNumberId = phoneNumberId ?? existingAccount.phoneNumberId;
-            wabaId = wabaId ?? existingAccount.wabaId ?? existingAccount.businessAccountId;
-            metaBusinessId = metaBusinessId ?? existingAccount.metaBusinessId ?? undefined;
+        if (env.META_ALLOW_EXISTING_WHATSAPP_FALLBACK) {
+          const existingAccounts = await prisma.whatsAppAccount.findMany({
+            where: {
+              tenantId,
+              deletedAt: null,
+              status: { not: "DISCONNECTED" }
+            },
+            select: {
+              businessAccountId: true,
+              phoneNumberId: true,
+              metaBusinessId: true,
+              wabaId: true
+            }
+          });
 
-            logger.warn(
-              {
-                tenantId,
-                phoneNumberId,
-                wabaId
-              },
-              "Using tenant's existing WhatsApp account IDs for Meta Embedded Signup fallback"
+          if (existingAccounts.length === 1) {
+            const existingAccount = existingAccounts[0];
+            if (existingAccount) {
+              phoneNumberId = phoneNumberId ?? existingAccount.phoneNumberId;
+              wabaId = wabaId ?? existingAccount.wabaId ?? existingAccount.businessAccountId;
+              metaBusinessId = metaBusinessId ?? existingAccount.metaBusinessId ?? undefined;
+
+              logger.warn(
+                {
+                  tenantId,
+                  phoneNumberId,
+                  wabaId
+                },
+                "Using tenant's existing WhatsApp account IDs for Meta Embedded Signup fallback"
+              );
+            }
+          } else if (existingAccounts.length > 1) {
+            throw badRequest(
+              "Meta did not return the selected WhatsApp account and this tenant has multiple WhatsApp accounts. Use Manual Setup for the intended account."
             );
           }
-        } else if (existingAccounts.length > 1) {
-          throw badRequest(
-            "Meta did not return the selected WhatsApp account and this tenant has multiple WhatsApp accounts. Use Manual Setup for the intended account."
-          );
         }
       }
     }
 
     if (!phoneNumberId || !wabaId) {
       throw badRequest(
-        "Meta callback is missing phoneNumberId or wabaId, and NovaChat could not discover one from the system user token. Confirm the selected WhatsApp account is assigned to the system user."
+        env.META_COEXISTENCE_ONBOARDING_ENABLED
+          ? "Meta did not return the selected WhatsApp Business App coexistence account. Confirm META_CONFIG_ID belongs to a Facebook Login for Business configuration with WhatsApp Business App onboarding/coexistence enabled, then complete the phone number selection in the popup."
+          : "Meta did not return the selected real WhatsApp account. For production SaaS onboarding, complete Meta Embedded Signup with a real WhatsApp Business Account or use Manual Setup with the client's real Phone Number ID, WABA ID, and token."
       );
     }
 
@@ -254,7 +272,14 @@ export class MetaEmbeddedSignupService {
           tokenExpiresAt,
           disconnectedAt: null,
           setupErrors: Prisma.JsonNull,
-          rawOnboardingMetadata: (input.rawResult ?? {}) as Prisma.InputJsonValue,
+          rawOnboardingMetadata: ({
+            ...(input.rawResult ?? {}),
+            novaChat: {
+              onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
+              coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+              embeddedSignupFeatureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null
+            }
+          }) as Prisma.InputJsonValue,
           deletedAt: null
         },
         create: {
@@ -272,7 +297,14 @@ export class MetaEmbeddedSignupService {
           verifiedName,
           qualityRating,
           tokenExpiresAt,
-          rawOnboardingMetadata: (input.rawResult ?? {}) as Prisma.InputJsonValue
+          rawOnboardingMetadata: ({
+            ...(input.rawResult ?? {}),
+            novaChat: {
+              onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
+              coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+              embeddedSignupFeatureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null
+            }
+          }) as Prisma.InputJsonValue
         }
       });
 
@@ -287,7 +319,10 @@ export class MetaEmbeddedSignupService {
             phoneNumberId,
             wabaId,
             metaBusinessId: metaBusinessIdValue,
-            hasToken: true
+            hasToken: true,
+            onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
+            coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+            embeddedSignupFeatureType: env.META_EMBEDDED_SIGNUP_FEATURE_TYPE ?? null
           }
         }
       });
@@ -299,7 +334,13 @@ export class MetaEmbeddedSignupService {
           action: "whatsapp.embedded_signup_callback",
           entityType: "WhatsAppAccount",
           entityId: saved.id,
-          metadata: { phoneNumberId, wabaId, metaBusinessId: metaBusinessIdValue }
+          metadata: {
+            phoneNumberId,
+            wabaId,
+            metaBusinessId: metaBusinessIdValue,
+            onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
+            coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED
+          }
         }
       });
 
