@@ -7,6 +7,7 @@ import type {
 } from "@novachat/shared-types";
 import { env } from "../../config/env.js";
 import { decryptSecret, encryptSecret } from "../../infrastructure/crypto/secret-crypto.js";
+import { logger } from "../../infrastructure/logger/logger.js";
 import { MetaGraphClient } from "../../infrastructure/meta/meta-graph-client.js";
 import { AppError, badRequest, forbidden, notFound, serviceUnavailable } from "../../shared/errors/app-error.js";
 
@@ -101,13 +102,34 @@ export class MetaEmbeddedSignupService {
     const wabaId = input.wabaId ?? this.extractString(input.rawResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
     const metaBusinessId = input.businessId ?? this.extractString(input.rawResult, ["business_id", "businessId"]);
 
+    logger.info(
+      {
+        tenantId,
+        hasCode: Boolean(input.code),
+        hasAccessToken: Boolean(input.accessToken),
+        hasSystemUserToken: Boolean(env.META_SYSTEM_USER_ACCESS_TOKEN),
+        hasPhoneNumberId: Boolean(phoneNumberId),
+        hasWabaId: Boolean(wabaId),
+        hasBusinessId: Boolean(metaBusinessId)
+      },
+      "Meta Embedded Signup callback received"
+    );
+
     if (input.code) {
       try {
         const exchanged = await metaGraphClient.exchangeCodeForAccessToken(input.code);
         accessToken = exchanged.accessToken;
         expiresIn = exchanged.expiresIn ?? expiresIn;
       } catch (error) {
-        if (env.META_SYSTEM_USER_ACCESS_TOKEN && phoneNumberId && wabaId && this.isMetaCodeExchangeError(error)) {
+        if (env.META_SYSTEM_USER_ACCESS_TOKEN && this.isMetaCodeExchangeError(error)) {
+          logger.warn(
+            {
+              tenantId,
+              hasPhoneNumberId: Boolean(phoneNumberId),
+              hasWabaId: Boolean(wabaId)
+            },
+            "Meta authorization code exchange failed; using configured system user token fallback"
+          );
           accessToken = env.META_SYSTEM_USER_ACCESS_TOKEN;
         } else {
           throw error;
