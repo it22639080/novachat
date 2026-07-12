@@ -113,6 +113,25 @@ function parseRecord(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
+function findStringValue(value: unknown, keys: string[]): string | undefined {
+  const record = parseRecord(value);
+  if (!record) return undefined;
+
+  for (const key of keys) {
+    const directValue = record[key];
+    if (typeof directValue === "string" && directValue.trim()) {
+      return directValue.trim();
+    }
+  }
+
+  for (const nested of Object.values(record)) {
+    const result = findStringValue(nested, keys);
+    if (result) return result;
+  }
+
+  return undefined;
+}
+
 function loadFacebookSdk() {
   return new Promise<void>((resolve, reject) => {
     if (window.FB) {
@@ -161,6 +180,7 @@ export default function SettingsPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const signupMessageRef = React.useRef<Record<string, unknown> | null>(null);
+  const signupMessageResolverRef = React.useRef<((message: Record<string, unknown>) => void) | null>(null);
 
   const selectedAccount = accounts.find((account) => account.id === selectedAccountId) ?? metaStatus?.account ?? accounts[0];
   const webhookUrl = "https://YOUR_API_DOMAIN.com/api/v1/webhooks/whatsapp";
@@ -172,6 +192,7 @@ export default function SettingsPage() {
       const data = parseRecord(event.data);
       if (data) {
         signupMessageRef.current = data;
+        signupMessageResolverRef.current?.(data);
       }
     }
 
@@ -225,6 +246,7 @@ export default function SettingsPage() {
     setSubmitting(true);
     setError(null);
     setNotice("Opening Meta Embedded Signup...");
+    signupMessageRef.current = null;
 
     try {
       await loadFacebookSdk();
@@ -237,16 +259,31 @@ export default function SettingsPage() {
         cookie: false
       });
 
+      const signupMessagePromise = new Promise<Record<string, unknown> | null>((resolve) => {
+        const timeout = window.setTimeout(() => {
+          signupMessageResolverRef.current = null;
+          resolve(signupMessageRef.current);
+        }, 8000);
+
+        signupMessageResolverRef.current = (message) => {
+          window.clearTimeout(timeout);
+          signupMessageResolverRef.current = null;
+          resolve(message);
+        };
+      });
+
       const response = await new Promise<FacebookLoginResponse>((resolve) => {
         window.FB?.login(resolve, {
           config_id: metaConfig.configId,
-          response_type: "token",
+          response_type: "code",
+          override_default_response_type: true,
           extras: {
             setup: {},
             sessionInfoVersion: "3"
           }
         });
       });
+      const embeddedSignupResult = await signupMessagePromise;
 
       if (!response.authResponse?.code && !response.authResponse?.accessToken) {
         setNotice(null);
@@ -259,9 +296,12 @@ export default function SettingsPage() {
         ...(response.authResponse.code ? { code: response.authResponse.code } : {}),
         ...(response.authResponse.accessToken ? { accessToken: response.authResponse.accessToken } : {}),
         ...(typeof expiresIn === "number" && expiresIn > 0 ? { expiresIn } : {}),
+        ...(findStringValue(embeddedSignupResult, ["phone_number_id", "phoneNumberId"]) ? { phoneNumberId: findStringValue(embeddedSignupResult, ["phone_number_id", "phoneNumberId"]) } : {}),
+        ...(findStringValue(embeddedSignupResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]) ? { wabaId: findStringValue(embeddedSignupResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]) } : {}),
+        ...(findStringValue(embeddedSignupResult, ["business_id", "businessId"]) ? { businessId: findStringValue(embeddedSignupResult, ["business_id", "businessId"]) } : {}),
         rawResult: {
           facebookLogin: response,
-          embeddedSignup: signupMessageRef.current
+          embeddedSignup: embeddedSignupResult
         }
       };
 
