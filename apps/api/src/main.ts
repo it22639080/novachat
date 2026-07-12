@@ -1,3 +1,4 @@
+import { prisma } from "@novachat/database";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./infrastructure/logger/logger.js";
@@ -10,9 +11,46 @@ async function bootstrap() {
 
   const app = createApp();
   const httpServer = createRealtimeServer(app);
+  let isShuttingDown = false;
 
-  httpServer.listen(env.PORT, () => {
-    logger.info({ port: env.PORT, environment: env.NODE_ENV }, "NovaChat API started");
+  async function shutdown(signal: NodeJS.Signals) {
+    if (isShuttingDown) {
+      return;
+    }
+
+    isShuttingDown = true;
+    logger.info({ signal }, "NovaChat API shutting down");
+
+    await new Promise<void>((resolve, reject) => {
+      httpServer.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+    await prisma.$disconnect();
+    logger.info("NovaChat API shutdown complete");
+  }
+
+  process.once("SIGTERM", () => {
+    void shutdown("SIGTERM").then(() => process.exit(0)).catch((error) => {
+      logger.error({ err: error }, "NovaChat API shutdown failed");
+      process.exit(1);
+    });
+  });
+
+  process.once("SIGINT", () => {
+    void shutdown("SIGINT").then(() => process.exit(0)).catch((error) => {
+      logger.error({ err: error }, "NovaChat API shutdown failed");
+      process.exit(1);
+    });
+  });
+
+  httpServer.listen(env.PORT, "0.0.0.0", () => {
+    logger.info({ port: env.PORT, host: "0.0.0.0", environment: env.NODE_ENV }, "NovaChat API started");
     logger.info(
       {
         openAiBaseUrl: env.OPENAI_BASE_URL,

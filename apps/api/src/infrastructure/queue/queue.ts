@@ -3,7 +3,7 @@ import { env } from "../../config/env.js";
 import { logger } from "../logger/logger.js";
 
 const redisUrl = new URL(env.REDIS_URL);
-type QueueLike = Pick<Queue, "add" | "on" | "name">;
+type QueueLike = Pick<Queue, "add" | "close" | "on" | "name">;
 const isTestRuntime =
   env.NODE_ENV === "test" ||
   process.env.VITEST === "true" ||
@@ -15,6 +15,7 @@ function createQueue(name: string, delay: number, removeOnComplete: number, remo
     return {
       name,
       add: async (jobName: string) => ({ id: `test-${name}-${jobName}` }) as Awaited<ReturnType<Queue["add"]>>,
+      close: async () => undefined,
       on: () => undefined as unknown as Queue
     };
   }
@@ -58,4 +59,8 @@ for (const queue of [foundationQueue, knowledgeQueue, usageQueue, campaignQueue]
       "BullMQ queue connection error. Redis 5 or newer is required."
     );
   });
+}
+
+export async function closeQueues() {
+  await Promise.all([foundationQueue, knowledgeQueue, usageQueue, campaignQueue].map((queue) => queue.close()));
 }
