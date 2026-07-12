@@ -136,12 +136,16 @@ export class MetaGraphClient {
       code
     };
 
-    // The Facebook JS SDK Embedded Signup flow can issue codes against either
-    // its SDK callback URL or the configured redirect URI depending on app setup.
+    const configuredRedirectUri = env.META_REDIRECT_URI;
+    const redirectUriWithoutTrailingSlash = configuredRedirectUri?.replace(/\/$/, "");
+    const redirectUriWithTrailingSlash = redirectUriWithoutTrailingSlash
+      ? `${redirectUriWithoutTrailingSlash}/`
+      : undefined;
     const redirectAttempts = [
       undefined,
-      env.META_REDIRECT_URI,
-      "https://www.facebook.com/connect/login_success.html"
+      configuredRedirectUri,
+      redirectUriWithoutTrailingSlash,
+      redirectUriWithTrailingSlash
     ].filter((value, index, values): value is string | undefined => values.indexOf(value) === index);
 
     let body: TokenExchangeResponse | null = null;
