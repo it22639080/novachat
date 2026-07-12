@@ -173,6 +173,44 @@ export class MetaEmbeddedSignupService {
           "Meta did not return the selected WhatsApp account and the system user token can access multiple WhatsApp numbers. Use Manual Setup or restrict the system user to one WhatsApp account."
         );
       }
+
+      if (!phoneNumberId || !wabaId) {
+        const existingAccounts = await prisma.whatsAppAccount.findMany({
+          where: {
+            tenantId,
+            deletedAt: null,
+            status: { not: "DISCONNECTED" }
+          },
+          select: {
+            businessAccountId: true,
+            phoneNumberId: true,
+            metaBusinessId: true,
+            wabaId: true
+          }
+        });
+
+        if (existingAccounts.length === 1) {
+          const existingAccount = existingAccounts[0];
+          if (existingAccount) {
+            phoneNumberId = phoneNumberId ?? existingAccount.phoneNumberId;
+            wabaId = wabaId ?? existingAccount.wabaId ?? existingAccount.businessAccountId;
+            metaBusinessId = metaBusinessId ?? existingAccount.metaBusinessId ?? undefined;
+
+            logger.warn(
+              {
+                tenantId,
+                phoneNumberId,
+                wabaId
+              },
+              "Using tenant's existing WhatsApp account IDs for Meta Embedded Signup fallback"
+            );
+          }
+        } else if (existingAccounts.length > 1) {
+          throw badRequest(
+            "Meta did not return the selected WhatsApp account and this tenant has multiple WhatsApp accounts. Use Manual Setup for the intended account."
+          );
+        }
+      }
     }
 
     if (!phoneNumberId || !wabaId) {
