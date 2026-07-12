@@ -221,6 +221,10 @@ export default function SettingsPage() {
       setError("Meta Embedded Signup is not configured yet. Ask the platform admin to configure Meta App settings.");
       return;
     }
+    if (!metaConfig.redirectUri) {
+      setError("Meta redirect URI is not configured. Ask the platform admin to set META_REDIRECT_URI.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -240,6 +244,7 @@ export default function SettingsPage() {
       const response = await new Promise<FacebookLoginResponse>((resolve) => {
         window.FB?.login(resolve, {
           config_id: metaConfig.configId,
+          redirect_uri: metaConfig.redirectUri,
           response_type: "code",
           override_default_response_type: true,
           extras: { setup: {} }
