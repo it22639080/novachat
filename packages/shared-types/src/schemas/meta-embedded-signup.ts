@@ -1,5 +1,18 @@
 import { z } from "zod";
 
+const optionalPositiveInt = z.preprocess((value) => {
+  if (value === null || value === undefined || value === "") {
+    return undefined;
+  }
+
+  const numericValue = typeof value === "string" ? Number(value) : value;
+  if (typeof numericValue === "number" && numericValue <= 0) {
+    return undefined;
+  }
+
+  return value;
+}, z.coerce.number().int().positive().optional());
+
 export const metaEmbeddedSignupCallbackSchema = z.object({
   code: z.string().trim().min(1).max(2048).optional(),
   accessToken: z.string().trim().min(20).max(4096).optional(),
@@ -9,7 +22,7 @@ export const metaEmbeddedSignupCallbackSchema = z.object({
   displayPhoneNumber: z.string().trim().min(6).max(32).optional(),
   verifiedName: z.string().trim().max(120).optional(),
   qualityRating: z.string().trim().max(80).optional(),
-  expiresIn: z.coerce.number().int().positive().optional(),
+  expiresIn: optionalPositiveInt,
   rawResult: z.record(z.unknown()).optional()
 }).refine((value) => value.code || value.accessToken, {
   message: "Embedded signup callback requires an authorization code or access token.",

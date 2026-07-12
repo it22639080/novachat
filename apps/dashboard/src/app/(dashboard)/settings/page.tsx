@@ -252,14 +252,19 @@ export default function SettingsPage() {
         return;
       }
 
-      const callback = await apiClient.post<{ account: WhatsAppAccount }>("/meta/embedded-signup/callback", {
-        code: response.authResponse.code,
-        accessToken: response.authResponse.accessToken,
-        expiresIn: response.authResponse.expiresIn,
+      const expiresIn = response.authResponse.expiresIn;
+      const callbackPayload = {
+        ...(response.authResponse.code ? { code: response.authResponse.code } : {}),
+        ...(response.authResponse.accessToken ? { accessToken: response.authResponse.accessToken } : {}),
+        ...(typeof expiresIn === "number" && expiresIn > 0 ? { expiresIn } : {}),
         rawResult: {
           facebookLogin: response,
           embeddedSignup: signupMessageRef.current
         }
+      };
+
+      const callback = await apiClient.post<{ account: WhatsAppAccount }>("/meta/embedded-signup/callback", {
+        ...callbackPayload
       }, tenantOptions);
 
       const completed = await apiClient.post<{ account: WhatsAppAccount; health: MetaHealth }>(
