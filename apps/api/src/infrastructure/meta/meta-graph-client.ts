@@ -12,6 +12,11 @@ type MetaGraphErrorBody = {
   };
 };
 
+type MetaGraphRequestError = Error & {
+  status?: number;
+  body?: MetaGraphErrorBody | string | null;
+};
+
 type TokenExchangeResponse = {
   access_token?: string;
   token_type?: string;
@@ -61,10 +66,17 @@ async function requestJson<T>(url: URL, init: RequestInit) {
 
   if (!response.ok) {
     const graphError = body as MetaGraphErrorBody | string | null;
+    const safeUrl = new URL(url.toString());
+    for (const sensitiveParam of ["access_token", "client_secret", "code"]) {
+      if (safeUrl.searchParams.has(sensitiveParam)) {
+        safeUrl.searchParams.set(sensitiveParam, "[REDACTED]");
+      }
+    }
+
     logger.warn(
       {
         status: response.status,
-        url: url.toString().replace(/access_token=[^&]+/g, "access_token=[REDACTED]"),
+        url: safeUrl.toString(),
         body: graphError
       },
       "Meta Graph API request failed"
@@ -75,14 +87,30 @@ async function requestJson<T>(url: URL, init: RequestInit) {
         ? graphError.error?.message
         : undefined;
 
-    throw badGateway(
+    const error = badGateway(
       "META_GRAPH_REQUEST_FAILED",
       message ?? `Meta Graph API request failed with status ${response.status}`,
       { status: response.status }
-    );
+    ) as MetaGraphRequestError;
+    error.status = response.status;
+    error.body = graphError;
+    throw error;
   }
 
   return body as T;
+}
+
+function isRedirectMismatchError(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const graphError = (error as MetaGraphRequestError).body;
+  if (!graphError || typeof graphError !== "object" || !("error" in graphError)) {
+    return false;
+  }
+
+  return graphError.error?.error_subcode === 36008;
 }
 
 export class MetaGraphClient {
@@ -102,15 +130,44 @@ export class MetaGraphClient {
   async exchangeCodeForAccessToken(code: string) {
     this.assertConfigured();
 
-    // Meta Embedded Signup code exchange may vary by configured flow/version.
-    // Keep this isolated so only this client needs adjustment after Meta App Review setup.
-    const url = graphUrl("oauth/access_token", {
+    const baseParams = {
       client_id: env.META_APP_ID ?? "",
       client_secret: env.META_APP_SECRET ?? "",
       code
-    });
+    };
 
-    const body = await requestJson<TokenExchangeResponse>(url, { method: "GET" });
+    // The Facebook JS SDK Embedded Signup flow can issue codes against either
+    // its SDK callback URL or the configured redirect URI depending on app setup.
+    const redirectAttempts = [
+      undefined,
+      env.META_REDIRECT_URI,
+      "https://www.facebook.com/connect/login_success.html"
+    ].filter((value, index, values): value is string | undefined => values.indexOf(value) === index);
+
+    let body: TokenExchangeResponse | null = null;
+    let lastError: unknown;
+
+    for (const redirectUri of redirectAttempts) {
+      const url = graphUrl("oauth/access_token", {
+        ...baseParams,
+        ...(redirectUri ? { redirect_uri: redirectUri } : {})
+      });
+
+      try {
+        body = await requestJson<TokenExchangeResponse>(url, { method: "GET" });
+        break;
+      } catch (error) {
+        lastError = error;
+        if (!isRedirectMismatchError(error)) {
+          throw error;
+        }
+      }
+    }
+
+    if (!body) {
+      throw lastError;
+    }
+
     if (!body.access_token) {
       throw badGateway("META_TOKEN_EXCHANGE_FAILED", "Meta did not return an access token.");
     }
