@@ -21,6 +21,7 @@ META_CONFIG_ID=
 META_API_VERSION=v20.0
 META_REDIRECT_URI=http://localhost:3000/settings
 META_WEBHOOK_VERIFY_TOKEN=
+META_SYSTEM_USER_ACCESS_TOKEN=
 META_EMBEDDED_SIGNUP_ENABLED=true
 ```
 
@@ -32,6 +33,7 @@ WHATSAPP_GRAPH_API_VERSION=v20.0
 ```
 
 `WHATSAPP_TOKEN_ENCRYPTION_KEY` must be at least 32 characters. Access tokens are never returned to the frontend after saving.
+If your Meta Embedded Signup configuration uses the `System-user access token` type, set `META_SYSTEM_USER_ACCESS_TOKEN` on the API service. NovaChat uses it only as a backend fallback when Meta returns the selected WABA/phone result but rejects the OAuth code exchange.
 
 ## Meta App Setup
 
@@ -83,6 +85,7 @@ https://YOUR_NGROK_DOMAIN.ngrok-free.app/api/v1/webhooks/whatsapp
 
 - `META_EMBEDDED_SIGNUP_NOT_CONFIGURED`: one or more Meta environment variables are missing.
 - `Meta did not return an access token`: confirm Config ID, redirect URI, app mode, and permissions.
+- `Error validating verification code`: confirm redirect URI settings. For system-user-token configurations, set `META_SYSTEM_USER_ACCESS_TOKEN` in the API environment.
 - Callback missing `phoneNumberId` or `wabaId`: confirm the Embedded Signup result shape for the current Meta API version and update the isolated Meta SDK payload mapping in the dashboard if needed.
 - Health check needs review: confirm token permissions, phone number ID, WABA subscription, webhook verify token, and Meta App Review state.
 - Webhook not received: verify Meta callback URL, verify token, subscribed fields, and public API tunnel/domain.

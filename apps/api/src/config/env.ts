@@ -52,6 +52,7 @@ const envSchema = z.object({
   META_API_VERSION: z.string().min(2).default("v20.0"),
   META_REDIRECT_URI: optionalNonEmptyString,
   META_WEBHOOK_VERIFY_TOKEN: optionalNonEmptyString,
+  META_SYSTEM_USER_ACCESS_TOKEN: optionalNonEmptyString,
   META_EMBEDDED_SIGNUP_ENABLED: booleanEnv.default(false),
   OPENAI_API_KEY: optionalNonEmptyString,
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),

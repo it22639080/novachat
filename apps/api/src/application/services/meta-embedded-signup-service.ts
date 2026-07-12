@@ -8,7 +8,7 @@ import type {
 import { env } from "../../config/env.js";
 import { decryptSecret, encryptSecret } from "../../infrastructure/crypto/secret-crypto.js";
 import { MetaGraphClient } from "../../infrastructure/meta/meta-graph-client.js";
-import { badRequest, forbidden, notFound, serviceUnavailable } from "../../shared/errors/app-error.js";
+import { AppError, badRequest, forbidden, notFound, serviceUnavailable } from "../../shared/errors/app-error.js";
 
 const metaGraphClient = new MetaGraphClient();
 
@@ -97,20 +97,27 @@ export class MetaEmbeddedSignupService {
 
     let accessToken = input.accessToken;
     let expiresIn = input.expiresIn;
+    const phoneNumberId = input.phoneNumberId ?? this.extractString(input.rawResult, ["phone_number_id", "phoneNumberId"]);
+    const wabaId = input.wabaId ?? this.extractString(input.rawResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
+    const metaBusinessId = input.businessId ?? this.extractString(input.rawResult, ["business_id", "businessId"]);
 
     if (input.code) {
-      const exchanged = await metaGraphClient.exchangeCodeForAccessToken(input.code);
-      accessToken = exchanged.accessToken;
-      expiresIn = exchanged.expiresIn ?? expiresIn;
+      try {
+        const exchanged = await metaGraphClient.exchangeCodeForAccessToken(input.code);
+        accessToken = exchanged.accessToken;
+        expiresIn = exchanged.expiresIn ?? expiresIn;
+      } catch (error) {
+        if (env.META_SYSTEM_USER_ACCESS_TOKEN && phoneNumberId && wabaId && this.isMetaCodeExchangeError(error)) {
+          accessToken = env.META_SYSTEM_USER_ACCESS_TOKEN;
+        } else {
+          throw error;
+        }
+      }
     }
 
     if (!accessToken) {
       throw badRequest("Meta callback did not include a usable authorization code or access token.");
     }
-
-    const phoneNumberId = input.phoneNumberId ?? this.extractString(input.rawResult, ["phone_number_id", "phoneNumberId"]);
-    const wabaId = input.wabaId ?? this.extractString(input.rawResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
-    const metaBusinessId = input.businessId ?? this.extractString(input.rawResult, ["business_id", "businessId"]);
 
     if (!phoneNumberId || !wabaId) {
       throw badRequest(
@@ -489,6 +496,10 @@ export class MetaEmbeddedSignupService {
     }
 
     return undefined;
+  }
+
+  private isMetaCodeExchangeError(error: unknown) {
+    return error instanceof AppError && error.code === "META_GRAPH_REQUEST_FAILED";
   }
 
   assertAdminTenantAccess(userIsSuperAdmin: boolean | undefined) {
