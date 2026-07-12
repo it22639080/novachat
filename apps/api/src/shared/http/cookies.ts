@@ -8,7 +8,7 @@ export const authCookieNames = {
 
 const baseCookieOptions = {
   httpOnly: true,
-  sameSite: "lax" as const,
+  sameSite: env.COOKIE_SECURE ? ("none" as const) : ("lax" as const),
   secure: env.COOKIE_SECURE,
   path: "/"
 };
