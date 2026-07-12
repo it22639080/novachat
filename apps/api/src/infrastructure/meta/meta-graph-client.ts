@@ -35,6 +35,22 @@ type BusinessAccountResponse = {
   name?: string;
 };
 
+type MetaBusinessResponse = {
+  id: string;
+  name?: string;
+};
+
+type MetaGraphListResponse<T> = {
+  data?: T[];
+};
+
+type DiscoveredWhatsAppAccount = {
+  businessId: string;
+  wabaId: string;
+  wabaName?: string | undefined;
+  phoneNumber: PhoneNumberResponse;
+};
+
 function graphUrl(path: string, searchParams?: Record<string, string>) {
   const url = new URL(`https://graph.facebook.com/${env.META_API_VERSION}/${path.replace(/^\//, "")}`);
 
@@ -200,6 +216,64 @@ export class MetaGraphClient {
     return requestJson<BusinessAccountResponse>(url, { method: "GET" });
   }
 
+  async listBusinesses(accessToken: string) {
+    const url = graphUrl("me/businesses", {
+      fields: "id,name",
+      access_token: accessToken
+    });
+
+    const response = await requestJson<MetaGraphListResponse<MetaBusinessResponse>>(url, { method: "GET" });
+    return response.data ?? [];
+  }
+
+  async listWhatsAppBusinessAccounts(businessId: string, accessToken: string) {
+    const accountGroups = await Promise.all([
+      this.listWhatsAppBusinessAccountsByEdge(businessId, "owned_whatsapp_business_accounts", accessToken).catch(() => []),
+      this.listWhatsAppBusinessAccountsByEdge(businessId, "client_whatsapp_business_accounts", accessToken).catch(() => [])
+    ]);
+
+    const accounts = new Map<string, BusinessAccountResponse>();
+    for (const account of accountGroups.flat()) {
+      accounts.set(account.id, account);
+    }
+
+    return [...accounts.values()];
+  }
+
+  async listPhoneNumbers(wabaId: string, accessToken: string) {
+    const url = graphUrl(`${wabaId}/phone_numbers`, {
+      fields: "id,display_phone_number,verified_name,quality_rating",
+      access_token: accessToken
+    });
+
+    const response = await requestJson<MetaGraphListResponse<PhoneNumberResponse>>(url, { method: "GET" });
+    return response.data ?? [];
+  }
+
+  async discoverWhatsAppAccounts(accessToken: string) {
+    const businesses = await this.listBusinesses(accessToken);
+    const discovered = new Map<string, DiscoveredWhatsAppAccount>();
+
+    for (const business of businesses) {
+      const wabas = await this.listWhatsAppBusinessAccounts(business.id, accessToken);
+
+      for (const waba of wabas) {
+        const phoneNumbers = await this.listPhoneNumbers(waba.id, accessToken).catch(() => []);
+
+        for (const phoneNumber of phoneNumbers) {
+          discovered.set(phoneNumber.id, {
+            businessId: business.id,
+            wabaId: waba.id,
+            wabaName: waba.name,
+            phoneNumber
+          });
+        }
+      }
+    }
+
+    return [...discovered.values()];
+  }
+
   async subscribeAppToWaba(wabaId: string, accessToken: string) {
     const url = graphUrl(`${wabaId}/subscribed_apps`);
     const body = new URLSearchParams({ access_token: accessToken });
@@ -209,5 +283,15 @@ export class MetaGraphClient {
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body
     });
+  }
+
+  private async listWhatsAppBusinessAccountsByEdge(businessId: string, edge: string, accessToken: string) {
+    const url = graphUrl(`${businessId}/${edge}`, {
+      fields: "id,name",
+      access_token: accessToken
+    });
+
+    const response = await requestJson<MetaGraphListResponse<BusinessAccountResponse>>(url, { method: "GET" });
+    return response.data ?? [];
   }
 }

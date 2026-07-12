@@ -98,9 +98,9 @@ export class MetaEmbeddedSignupService {
 
     let accessToken = input.accessToken;
     let expiresIn = input.expiresIn;
-    const phoneNumberId = input.phoneNumberId ?? this.extractString(input.rawResult, ["phone_number_id", "phoneNumberId"]);
-    const wabaId = input.wabaId ?? this.extractString(input.rawResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
-    const metaBusinessId = input.businessId ?? this.extractString(input.rawResult, ["business_id", "businessId"]);
+    let phoneNumberId = input.phoneNumberId ?? this.extractString(input.rawResult, ["phone_number_id", "phoneNumberId"]);
+    let wabaId = input.wabaId ?? this.extractString(input.rawResult, ["waba_id", "wabaId", "whatsapp_business_account_id"]);
+    let metaBusinessId = input.businessId ?? this.extractString(input.rawResult, ["business_id", "businessId"]);
 
     logger.info(
       {
@@ -141,9 +141,43 @@ export class MetaEmbeddedSignupService {
       throw badRequest("Meta callback did not include a usable authorization code or access token.");
     }
 
+    if ((!phoneNumberId || !wabaId) && accessToken === env.META_SYSTEM_USER_ACCESS_TOKEN) {
+      const discoveredAccounts = await metaGraphClient.discoverWhatsAppAccounts(accessToken).catch((error) => {
+        logger.warn(
+          {
+            tenantId,
+            error: error instanceof Error ? error.message : "Unknown Meta discovery error"
+          },
+          "Could not discover WhatsApp accounts with system user token"
+        );
+        return [];
+      });
+
+      logger.info(
+        {
+          tenantId,
+          discoveredWhatsAppAccounts: discoveredAccounts.length
+        },
+        "Meta system user token discovery completed"
+      );
+
+      if (discoveredAccounts.length === 1) {
+        const discoveredAccount = discoveredAccounts[0];
+        if (discoveredAccount) {
+          phoneNumberId = phoneNumberId ?? discoveredAccount.phoneNumber.id;
+          wabaId = wabaId ?? discoveredAccount.wabaId;
+          metaBusinessId = metaBusinessId ?? discoveredAccount.businessId;
+        }
+      } else if (discoveredAccounts.length > 1) {
+        throw badRequest(
+          "Meta did not return the selected WhatsApp account and the system user token can access multiple WhatsApp numbers. Use Manual Setup or restrict the system user to one WhatsApp account."
+        );
+      }
+    }
+
     if (!phoneNumberId || !wabaId) {
       throw badRequest(
-        "Meta callback is missing phoneNumberId or wabaId. Confirm the Embedded Signup frontend sends the selected WhatsApp account result."
+        "Meta callback is missing phoneNumberId or wabaId, and NovaChat could not discover one from the system user token. Confirm the selected WhatsApp account is assigned to the system user."
       );
     }
 
