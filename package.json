@@ -1,0 +1,33 @@
+{
+  "name": "novachat-ai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Enterprise multi-tenant AI messaging SaaS platform.",
+  "packageManager": "pnpm@11.7.0",
+  "scripts": {
+    "dev": "pnpm build:packages && pnpm --parallel --filter @novachat/api --filter @novachat/dashboard --filter @novachat/super-admin dev",
+    "dev:api": "pnpm --filter @novachat/api dev",
+    "dev:worker": "pnpm --filter @novachat/api dev:worker",
+    "dev:dashboard": "pnpm --filter @novachat/dashboard dev",
+    "dev:super-admin": "pnpm --filter @novachat/super-admin dev",
+    "build:packages": "pnpm --filter @novachat/shared-types build && pnpm --filter @novachat/database prisma:generate && pnpm --filter @novachat/database build && pnpm --filter @novachat/ui build",
+    "build": "pnpm -r build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm build:packages && pnpm -r typecheck",
+    "test": "pnpm -r test",
+    "test:ci": "pnpm build:packages && pnpm --filter @novachat/api test:ci && pnpm --filter @novachat/shared-types test",
+    "test:coverage": "pnpm --filter @novachat/api test:coverage",
+    "db:generate": "pnpm --filter @novachat/database prisma:generate",
+    "db:migrate": "pnpm --filter @novachat/database prisma:migrate",
+    "db:reset": "pnpm --filter @novachat/database prisma:reset",
+    "db:seed": "pnpm --filter @novachat/database seed",
+    "db:studio": "pnpm --filter @novachat/database prisma:studio"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.7",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.3"
+  }
+}

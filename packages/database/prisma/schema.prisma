@@ -1,0 +1,1705 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum Role {
+  SUPER_ADMIN
+  OWNER
+  ADMIN
+  MANAGER
+  AGENT
+  VIEWER
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum TenantMemberStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+}
+
+enum BillingStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELED
+}
+
+enum UsageMetricType {
+  MESSAGES_SENT
+  MESSAGES_RECEIVED
+  AI_RESPONSES
+  CAMPAIGN_RECIPIENTS
+  STORAGE_MB
+  TEAM_MEMBERS
+}
+
+enum UsageEventType {
+  AI_REPLY
+  AI_INPUT_TOKEN
+  AI_OUTPUT_TOKEN
+  WHATSAPP_MESSAGE
+  CREDIT_TOPUP
+  LIMIT_RESET
+}
+
+enum CreditTopUpType {
+  AI_REPLY
+  WHATSAPP_MESSAGE
+}
+
+enum ApiKeyStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+enum WhatsAppAccountStatus {
+  PENDING
+  CONNECTED
+  DISCONNECTED
+  DISABLED
+}
+
+enum WhatsAppOnboardingMethod {
+  MANUAL
+  EMBEDDED_SIGNUP
+}
+
+enum MetaConnectionLogStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+enum WhatsAppWebhookProcessingStatus {
+  RECEIVED
+  PROCESSED
+  FAILED
+  IGNORED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  BLOCKED
+  ARCHIVED
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  RESOLVED
+  CLOSED
+}
+
+enum ConversationPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum MessageSenderType {
+  CUSTOMER
+  USER
+  AI
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  VIDEO
+  DOCUMENT
+  TEMPLATE
+  INTERACTIVE
+  SYSTEM
+}
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+enum LeadStatus {
+  OPEN
+  WON
+  LOST
+  ARCHIVED
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING
+  CONFIRMED
+  PAID
+  FULFILLED
+  CANCELLED
+  REFUNDED
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  OUT_OF_STOCK
+  ARCHIVED
+}
+
+enum DeliveryStatus {
+  NOT_REQUIRED
+  PENDING
+  READY
+  SHIPPED
+  DELIVERED
+  FAILED
+  RETURNED
+}
+
+enum OrderSource {
+  MANUAL
+  INBOX
+  AI
+  SIMULATOR
+  WHATSAPP
+}
+
+enum AiToolCallStatus {
+  SUCCESS
+  FAILED
+  BLOCKED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentSource {
+  MANUAL
+  INBOX
+  AI
+  SIMULATOR
+  WHATSAPP
+  PUBLIC_BOOKING
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  RUNNING
+  PAUSED
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum CampaignRecipientStatus {
+  PENDING
+  SENT
+  DELIVERED
+  READ
+  REPLIED
+  FAILED
+  OPTED_OUT
+}
+
+enum ChatbotStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum AiAgentStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum AiProvider {
+  OPENAI
+  GEMINI
+}
+
+enum AiLogStatus {
+  SUCCESS
+  FAILED
+  BLOCKED
+}
+
+enum KnowledgeDocumentStatus {
+  UPLOADED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum KnowledgeSourceType {
+  FILE
+  URL
+}
+
+enum NotificationStatus {
+  UNREAD
+  READ
+  ARCHIVED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+}
+
+enum Currency {
+  USD
+  LKR
+  INR
+  EUR
+  GBP
+}
+
+model User {
+  id                      String                   @id @default(uuid())
+  email                   String                   @unique
+  name                    String?
+  passwordHash            String?
+  avatarUrl               String?
+  phone                   String?
+  isSuperAdmin            Boolean                  @default(false)
+  emailVerifiedAt         DateTime?
+  lastLoginAt             DateTime?
+  members                 TenantMember[]
+  refreshTokens           RefreshToken[]
+  passwordResetTokens     PasswordResetToken[]
+  emailVerificationTokens EmailVerificationToken[]
+  apiKeys                 ApiKey[]                 @relation("ApiKeyCreator")
+  assignedConversations   Conversation[]           @relation("AssignedConversations")
+  assignedLeads           Lead[]                   @relation("AssignedLeads")
+  approvedOrders          Order[]                  @relation("OrderApprovals")
+  orderTimelineEvents     OrderTimelineEvent[]
+  notes                   Note[]
+  auditLogs               AuditLog[]               @relation("AuditLogActor")
+  notifications           Notification[]
+  creditTopUps            CreditTopUp[]
+  aiToolCallLogs          AiToolCallLog[]
+  aiAgentVersions         AiAgentVersion[]
+  staffedAppointments     Appointment[]              @relation("AppointmentStaff")
+  staffAvailabilities     StaffAvailability[]
+  appointmentTimelineEvents AppointmentTimelineEvent[]
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  deletedAt               DateTime?
+
+  @@index([email])
+  @@index([phone])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Tenant {
+  id                     String                  @id @default(uuid())
+  name                   String
+  slug                   String                  @unique
+  status                 TenantStatus            @default(ACTIVE)
+  timezone               String                  @default("UTC")
+  logoUrl                String?
+  members                TenantMember[]
+  subscriptions          Subscription[]
+  usageMetrics           UsageMetric[]
+  usageLimit             TenantUsageLimit?
+  usageCounter           TenantUsageCounter?
+  creditBalance          TenantCreditBalance?
+  usageEvents            UsageEvent[]
+  creditTopUps           CreditTopUp[]
+  auditLogs              AuditLog[]
+  apiKeys                ApiKey[]
+  metaConnectionLogs     MetaConnectionLog[]
+  whatsappWebhookLogs    WhatsAppWebhookLog[]
+  whatsappAccounts       WhatsAppAccount[]
+  customers              Customer[]
+  conversations          Conversation[]
+  messages               Message[]
+  leads                  Lead[]
+  leadStages             LeadStage[]
+  tags                   Tag[]
+  notes                  Note[]
+  productCategories      ProductCategory[]
+  products               Product[]
+  productImages          ProductImage[]
+  orders                 Order[]
+  orderItems             OrderItem[]
+  orderTimelineEvents    OrderTimelineEvent[]
+  aiToolCallLogs         AiToolCallLog[]
+  serviceOfferings       ServiceOffering[]
+  staffAvailabilities    StaffAvailability[]
+  appointments           Appointment[]
+  appointmentTimelineEvents AppointmentTimelineEvent[]
+  campaigns              Campaign[]
+  campaignRecipients     CampaignRecipient[]
+  whatsAppTemplates      WhatsAppTemplate[]
+  chatbots               Chatbot[]
+  chatbotFlows           ChatbotFlow[]
+  aiAgents               AiAgent[]
+  aiAgentVersions        AiAgentVersion[]
+  knowledgeBaseDocuments KnowledgeBaseDocument[]
+  knowledgeBaseChunks    KnowledgeBaseChunk[]
+  aiAssistants           AiAssistant[]
+  aiSettings             TenantAiSettings?
+  aiLogs                 AiLog[]
+  notifications          Notification[]
+  invoices               Invoice[]
+  payments               Payment[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+  deletedAt              DateTime?
+
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TenantMember {
+  id        String             @id @default(uuid())
+  tenantId  String
+  userId    String
+  role      Role
+  status    TenantMemberStatus @default(ACTIVE)
+  tenant    Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user      User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, userId])
+  @@index([tenantId])
+  @@index([tenantId, role])
+  @@index([tenantId, status])
+  @@index([userId, status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  roles       RolePermission[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model RolePermission {
+  id           String     @id @default(uuid())
+  role         Role
+  permissionId String
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([role, permissionId])
+  @@index([role])
+  @@index([permissionId])
+  @@index([createdAt])
+}
+
+model Plan {
+  id            String         @id @default(uuid())
+  code          String         @unique
+  name          String
+  description   String?
+  priceMonthly  Decimal        @default(0) @db.Decimal(12, 2)
+  currency      Currency       @default(USD)
+  limits        Json
+  isActive      Boolean        @default(true)
+  subscriptions Subscription[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  @@index([isActive])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Subscription {
+  id                   String             @id @default(uuid())
+  tenantId             String
+  planId               String
+  status               SubscriptionStatus @default(TRIALING)
+  currentPeriodStart   DateTime
+  currentPeriodEnd     DateTime
+  trialEndsAt          DateTime?
+  cancelAtPeriodEnd    Boolean            @default(false)
+  externalSubscription String?
+  tenant               Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan                 Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices             Invoice[]
+  payments             Payment[]
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  deletedAt            DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model UsageMetric {
+  id        String          @id @default(uuid())
+  tenantId  String
+  type      UsageMetricType
+  quantity  Int             @default(0)
+  periodKey String
+  metadata  Json?
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@unique([tenantId, type, periodKey])
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([createdAt])
+}
+
+model TenantUsageLimit {
+  id                          String        @id @default(uuid())
+  tenantId                    String        @unique
+  planName                    String        @default("Starter")
+  billingStatus               BillingStatus @default(TRIALING)
+  aiMonthlyReplyLimit         Int           @default(100)
+  whatsappMonthlyMessageLimit Int           @default(1000)
+  currentAiModel              String        @default("gpt-4o-mini")
+  dailyAiCostLimit            Decimal       @default(1) @db.Decimal(12, 4)
+  monthlyAiCostLimit          Decimal       @default(20) @db.Decimal(12, 4)
+  billingCycleStart           DateTime      @default(now())
+  billingCycleEnd             DateTime?
+  tenant                      Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt                   DateTime      @default(now())
+  updatedAt                   DateTime      @updatedAt
+  deletedAt                   DateTime?
+
+  @@index([tenantId])
+  @@index([billingStatus])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TenantUsageCounter {
+  id                            String   @id @default(uuid())
+  tenantId                      String   @unique
+  aiRepliesUsedThisMonth        Int      @default(0)
+  aiInputTokensUsed             Int      @default(0)
+  aiOutputTokensUsed            Int      @default(0)
+  whatsappMessagesUsedThisMonth Int      @default(0)
+  aiCostUsedToday               Decimal  @default(0) @db.Decimal(12, 6)
+  aiCostUsedThisMonth           Decimal  @default(0) @db.Decimal(12, 6)
+  aiDisabledDueToLimit          Boolean  @default(false)
+  whatsappDisabledDueToLimit    Boolean  @default(false)
+  lastUsageResetAt              DateTime?
+  dailyCostResetAt              DateTime?
+  tenant                        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  deletedAt                     DateTime?
+
+  @@index([tenantId])
+  @@index([aiDisabledDueToLimit])
+  @@index([whatsappDisabledDueToLimit])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TenantCreditBalance {
+  id                            String   @id @default(uuid())
+  tenantId                      String   @unique
+  extraAiReplyCredits           Int      @default(0)
+  extraWhatsappMessageCredits   Int      @default(0)
+  tenant                        Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+  deletedAt                     DateTime?
+
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model CreditTopUp {
+  id          String          @id @default(uuid())
+  tenantId    String
+  type        CreditTopUpType
+  quantity    Int
+  reason      String?
+  actorUserId String?
+  metadata    Json?
+  tenant      Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actor       User?           @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  deletedAt   DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([actorUserId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model UsageEvent {
+  id           String         @id @default(uuid())
+  tenantId     String
+  type         UsageEventType
+  quantity     Int
+  costEstimate Decimal        @default(0) @db.Decimal(12, 6)
+  metadata     Json?
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt    DateTime       @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([tenantId, createdAt])
+  @@index([type])
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  tenantId    String?
+  actorUserId String?
+  action      String
+  entityType  String
+  entityId    String?
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  tenant      Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actor       User?    @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@index([tenantId, entityType])
+  @@index([createdAt])
+}
+
+model ApiKey {
+  id            String       @id @default(uuid())
+  tenantId      String
+  createdById   String?
+  name          String
+  keyPrefix     String
+  keyHash       String       @unique
+  scopes        String[]     @default([])
+  status        ApiKeyStatus @default(ACTIVE)
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  tenant        Tenant       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdBy     User?        @relation("ApiKeyCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model RefreshToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@index([createdAt])
+}
+
+model WhatsAppAccount {
+  id                   String                @id @default(uuid())
+  tenantId             String
+  businessAccountId    String
+  phoneNumberId        String
+  displayPhoneNumber   String
+  displayName          String?
+  encryptedAccessToken String?
+  webhookVerifyToken   String?
+  status               WhatsAppAccountStatus @default(PENDING)
+  onboardingMethod     WhatsAppOnboardingMethod @default(MANUAL)
+  metaBusinessId       String?
+  wabaId               String?
+  verifiedName         String?
+  qualityRating        String?
+  tokenExpiresAt       DateTime?
+  connectedAt          DateTime?
+  disconnectedAt       DateTime?
+  lastHealthCheckAt    DateTime?
+  lastWebhookAt        DateTime?
+  setupErrors          Json?
+  rawOnboardingMetadata Json?
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversations        Conversation[]
+  messages             Message[]
+  campaigns            Campaign[]
+  aiAgents             AiAgent[]
+  metaConnectionLogs   MetaConnectionLog[]
+  webhookLogs          WhatsAppWebhookLog[]
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  deletedAt            DateTime?
+
+  @@unique([tenantId, phoneNumberId])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, onboardingMethod])
+  @@index([phoneNumberId])
+  @@index([wabaId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model MetaConnectionLog {
+  id                String                  @id @default(uuid())
+  tenantId          String
+  whatsappAccountId String?
+  eventType         String
+  status            MetaConnectionLogStatus
+  message           String
+  metadata          Json?
+  tenant            Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  whatsappAccount   WhatsAppAccount?        @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, eventType])
+  @@index([tenantId, status])
+  @@index([whatsappAccountId])
+  @@index([createdAt])
+}
+
+model WhatsAppWebhookLog {
+  id                String                         @id @default(uuid())
+  tenantId          String?
+  whatsappAccountId String?
+  phoneNumberId     String?
+  status            WhatsAppWebhookProcessingStatus @default(RECEIVED)
+  errorMessage      String?
+  payload           Json
+  tenant            Tenant?                        @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  whatsappAccount   WhatsAppAccount?               @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  createdAt         DateTime                       @default(now())
+  updatedAt         DateTime                       @updatedAt
+
+  @@index([tenantId])
+  @@index([phoneNumberId])
+  @@index([whatsappAccountId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Customer {
+  id            String         @id @default(uuid())
+  tenantId      String
+  name          String?
+  email         String?
+  phone         String
+  whatsappWaId  String?
+  status        CustomerStatus @default(ACTIVE)
+  customFields  Json?
+  tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversations Conversation[]
+  messages      Message[]
+  leads         Lead[]
+  notes         Note[]
+  orders        Order[]
+  appointments  Appointment[]
+  recipients    CampaignRecipient[]
+  notifications Notification[]
+  tags          CustomerTag[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  deletedAt     DateTime?
+
+  @@unique([tenantId, phone])
+  @@index([tenantId])
+  @@index([tenantId, email])
+  @@index([tenantId, phone])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Conversation {
+  id                String               @id @default(uuid())
+  tenantId          String
+  customerId        String
+  whatsappAccountId String?
+  assignedUserId    String?
+  status            ConversationStatus   @default(OPEN)
+  priority          ConversationPriority @default(NORMAL)
+  subject           String?
+  lastMessageAt     DateTime?
+  aiEnabled         Boolean              @default(true)
+  humanHandover     Boolean              @default(false)
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer          Customer             @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  whatsappAccount   WhatsAppAccount?     @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  assignedUser      User?                @relation("AssignedConversations", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  messages          Message[]
+  notes             Note[]
+  orders            Order[]
+  appointments      Appointment[]
+  aiLogs            AiLog[]
+  aiToolCallLogs    AiToolCallLog[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, status])
+  @@index([tenantId, aiEnabled])
+  @@index([tenantId, humanHandover])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Message {
+  id                String            @id @default(uuid())
+  tenantId          String
+  conversationId    String
+  customerId        String?
+  whatsappAccountId String?
+  direction         MessageDirection
+  senderType        MessageSenderType
+  type              MessageType       @default(TEXT)
+  status            MessageStatus     @default(QUEUED)
+  text              String?
+  mediaUrl          String?
+  externalId        String?
+  metadata          Json?
+  tenant            Tenant            @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  conversation      Conversation      @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+  customer          Customer?         @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  whatsappAccount   WhatsAppAccount?  @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@index([tenantId, conversationId, createdAt])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model LeadStage {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  color     String?
+  position  Int
+  isDefault Boolean  @default(false)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  leads     Lead[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, position])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Lead {
+  id                String     @id @default(uuid())
+  tenantId          String
+  customerId        String
+  stageId           String
+  assignedUserId    String?
+  title             String
+  status            LeadStatus @default(OPEN)
+  source            String?
+  value             Decimal?   @db.Decimal(12, 2)
+  currency          Currency   @default(USD)
+  score             Int        @default(0)
+  expectedCloseDate DateTime?
+  followUpAt        DateTime?
+  followUpNote      String?
+  aiScoreMetadata   Json?
+  aiNextAction      String?
+  tenant            Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer          Customer   @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  stage             LeadStage  @relation(fields: [stageId], references: [id], onDelete: Restrict)
+  assignedUser      User?      @relation("AssignedLeads", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  notes             Note[]
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  deletedAt         DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, stageId])
+  @@index([tenantId, assignedUserId])
+  @@index([tenantId, status])
+  @@index([tenantId, followUpAt])
+  @@index([tenantId, expectedCloseDate])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Tag {
+  id        String        @id @default(uuid())
+  tenantId  String
+  name      String
+  color     String?
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customers CustomerTag[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model CustomerTag {
+  customerId String
+  tagId      String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@id([customerId, tagId])
+  @@index([tagId])
+  @@index([createdAt])
+}
+
+model Note {
+  id             String        @id @default(uuid())
+  tenantId       String
+  authorUserId   String?
+  customerId     String?
+  leadId         String?
+  conversationId String?
+  body           String
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  author         User?         @relation(fields: [authorUserId], references: [id], onDelete: SetNull)
+  customer       Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  lead           Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, leadId])
+  @@index([tenantId, conversationId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ProductCategory {
+  id        String    @id @default(uuid())
+  tenantId  String
+  name      String
+  slug      String
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  products  Product[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Product {
+  id          String           @id @default(uuid())
+  tenantId    String
+  categoryId  String?
+  sku         String?
+  name        String
+  description String?
+  price       Decimal          @db.Decimal(12, 2)
+  currency    Currency         @default(USD)
+  stockQuantity Int             @default(0)
+  status      ProductStatus     @default(ACTIVE)
+  isActive    Boolean          @default(true)
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  category    ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  images      ProductImage[]
+  orderItems  OrderItem[]
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, status])
+  @@index([tenantId, stockQuantity])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ProductImage {
+  id        String   @id @default(uuid())
+  tenantId  String
+  productId String
+  url       String
+  alt       String?
+  position  Int      @default(0)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, productId])
+  @@index([tenantId, productId, position])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Order {
+  id                String               @id @default(uuid())
+  tenantId          String
+  customerId        String?
+  conversationId    String?
+  orderNumber       String?
+  status            OrderStatus          @default(DRAFT)
+  paymentStatus     PaymentStatus        @default(PENDING)
+  deliveryStatus    DeliveryStatus       @default(PENDING)
+  source            OrderSource          @default(MANUAL)
+  subtotalAmount    Decimal              @default(0) @db.Decimal(12, 2)
+  totalAmount       Decimal              @default(0) @db.Decimal(12, 2)
+  currency          Currency             @default(USD)
+  customerName      String?
+  customerPhone     String?
+  customerEmail     String?
+  deliveryAddress   String?
+  notes             String?
+  requiresApproval  Boolean              @default(false)
+  approvedAt        DateTime?
+  approvedByUserId  String?
+  confirmedAt       DateTime?
+  tenant            Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer          Customer?            @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  conversation      Conversation?        @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  approvedBy        User?                @relation("OrderApprovals", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  items             OrderItem[]
+  timeline          OrderTimelineEvent[]
+  toolCalls         AiToolCallLog[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, conversationId])
+  @@index([tenantId, status])
+  @@index([tenantId, paymentStatus])
+  @@index([tenantId, deliveryStatus])
+  @@index([tenantId, source])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model OrderItem {
+  id        String   @id @default(uuid())
+  tenantId  String
+  orderId   String
+  productId String?
+  name      String
+  sku       String?
+  quantity  Int
+  unitPrice Decimal  @db.Decimal(12, 2)
+  lineTotal Decimal  @default(0) @db.Decimal(12, 2)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product   Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, productId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model OrderTimelineEvent {
+  id          String   @id @default(uuid())
+  tenantId    String
+  orderId     String
+  actorUserId String?
+  type        String
+  message     String
+  metadata    Json?
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  actor       User?    @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, type])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AiToolCallLog {
+  id             String           @id @default(uuid())
+  tenantId       String
+  actorUserId    String?
+  conversationId String?
+  orderId        String?
+  appointmentId  String?
+  toolName       String
+  status         AiToolCallStatus
+  input          Json?
+  output         Json?
+  error          String?
+  tenant         Tenant           @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  actor          User?            @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  conversation   Conversation?    @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  order          Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  appointment    Appointment?     @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, actorUserId])
+  @@index([tenantId, conversationId])
+  @@index([tenantId, orderId])
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, toolName])
+  @@index([tenantId, status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ServiceOffering {
+  id                  String        @id @default(uuid())
+  tenantId            String
+  name                String
+  slug                String
+  description         String?
+  durationMinutes     Int           @default(30)
+  price               Decimal?      @db.Decimal(12, 2)
+  currency            Currency      @default(USD)
+  bufferBeforeMinutes Int           @default(0)
+  bufferAfterMinutes  Int           @default(0)
+  isActive            Boolean       @default(true)
+  tenant              Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appointments        Appointment[]
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+  deletedAt           DateTime?
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([tenantId, durationMinutes])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model StaffAvailability {
+  id          String   @id @default(uuid())
+  tenantId    String
+  staffUserId String
+  dayOfWeek   Int
+  startsAt    String
+  endsAt      String
+  timezone    String   @default("UTC")
+  isActive    Boolean  @default(true)
+  metadata    Json?
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  staff       User     @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, staffUserId])
+  @@index([tenantId, dayOfWeek])
+  @@index([tenantId, isActive])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Appointment {
+  id                       String                     @id @default(uuid())
+  tenantId                 String
+  customerId               String?
+  serviceId                String?
+  staffUserId              String?
+  conversationId           String?
+  title                    String
+  description              String?
+  startsAt                 DateTime
+  endsAt                   DateTime
+  timezone                 String
+  status                   AppointmentStatus          @default(SCHEDULED)
+  source                   AppointmentSource          @default(MANUAL)
+  customerName             String?
+  customerPhone            String?
+  customerEmail            String?
+  location                 String?
+  reminderScheduledAt      DateTime?
+  reminderSentAt           DateTime?
+  googleCalendarEventId    String?
+  googleCalendarSyncStatus String?
+  cancellationReason       String?
+  tenant                   Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  customer                 Customer?                  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  service                  ServiceOffering?           @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+  staff                    User?                      @relation("AppointmentStaff", fields: [staffUserId], references: [id], onDelete: SetNull)
+  conversation             Conversation?              @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  timeline                 AppointmentTimelineEvent[]
+  toolCalls                AiToolCallLog[]
+  createdAt                DateTime                   @default(now())
+  updatedAt                DateTime                   @updatedAt
+  deletedAt                DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, serviceId])
+  @@index([tenantId, staffUserId])
+  @@index([tenantId, conversationId])
+  @@index([tenantId, status])
+  @@index([tenantId, source])
+  @@index([tenantId, startsAt])
+  @@index([tenantId, reminderScheduledAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AppointmentTimelineEvent {
+  id            String      @id @default(uuid())
+  tenantId      String
+  appointmentId String
+  actorUserId   String?
+  type          String
+  message       String
+  metadata      Json?
+  tenant        Tenant      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  appointment   Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  actor         User?       @relation(fields: [actorUserId], references: [id], onDelete: SetNull)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  deletedAt     DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, appointmentId])
+  @@index([tenantId, type])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Campaign {
+  id                String              @id @default(uuid())
+  tenantId          String
+  whatsappAccountId String?
+  name              String
+  status            CampaignStatus      @default(DRAFT)
+  audience          Json
+  templateName      String?
+  scheduledAt       DateTime?
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  whatsappAccount   WhatsAppAccount?    @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  recipients        CampaignRecipient[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  deletedAt         DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, scheduledAt])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model CampaignRecipient {
+  id         String                  @id @default(uuid())
+  tenantId   String
+  campaignId String
+  customerId String?
+  phone      String
+  status     CampaignRecipientStatus @default(PENDING)
+  error      String?
+  sentAt     DateTime?
+  tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  campaign   Campaign                @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  customer   Customer?               @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime                @default(now())
+  updatedAt  DateTime                @updatedAt
+  deletedAt  DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, campaignId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, phone])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model WhatsAppTemplate {
+  id           String   @id @default(uuid())
+  tenantId     String
+  name         String
+  languageCode String   @default("en_US")
+  category     String   @default("MARKETING")
+  status       String   @default("APPROVED")
+  bodyText     String
+  components   Json?
+  metadata     Json?
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  deletedAt    DateTime?
+
+  @@unique([tenantId, name, languageCode])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, category])
+  @@index([tenantId, name])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Chatbot {
+  id             String        @id @default(uuid())
+  tenantId       String
+  name           String
+  status         ChatbotStatus @default(DRAFT)
+  systemPrompt   String
+  modelProvider  AiProvider    @default(OPENAI)
+  modelName      String        @default("gpt-4o-mini")
+  temperature    Decimal       @default(0.2) @db.Decimal(3, 2)
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  flows          ChatbotFlow[]
+  documents      KnowledgeBaseDocument[]
+  aiAssistants   AiAssistant[]
+  aiAgents       AiAgent[]
+  aiLogs         AiLog[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model ChatbotFlow {
+  id        String   @id @default(uuid())
+  tenantId  String
+  chatbotId String
+  name      String
+  version   Int      @default(1)
+  graph     Json
+  isActive  Boolean  @default(false)
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  chatbot   Chatbot  @relation(fields: [chatbotId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, chatbotId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model KnowledgeBaseDocument {
+  id        String               @id @default(uuid())
+  tenantId  String
+  chatbotId String?
+  title     String
+  sourceType KnowledgeSourceType @default(FILE)
+  sourceUrl String?
+  mimeType  String?
+  fileName  String?
+  fileSize  Int?
+  checksum  String?
+  status    KnowledgeDocumentStatus @default(UPLOADED)
+  error     String?
+  content   String?
+  metadata  Json?
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  chatbot   Chatbot?             @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
+  chunks    KnowledgeBaseChunk[]
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, chatbotId])
+  @@index([tenantId, status])
+  @@index([tenantId, sourceType])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model KnowledgeBaseChunk {
+  id         String                     @id @default(uuid())
+  tenantId   String
+  documentId String
+  content    String
+  tokenCount Int?
+  position   Int        @default(0)
+  sourceTitle String?
+  sourceUrl  String?
+  metadata   Json?
+  embedding  Unsupported("vector(1536)")?
+  tenant     Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  document   KnowledgeBaseDocument      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
+  deletedAt  DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, documentId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AiAssistant {
+  id            String     @id @default(uuid())
+  tenantId      String
+  chatbotId     String?
+  name          String
+  provider      AiProvider @default(OPENAI)
+  modelName     String     @default("gpt-4o-mini")
+  instructions  String
+  isActive      Boolean    @default(true)
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  chatbot       Chatbot?   @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
+  logs          AiLog[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, isActive])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AiAgent {
+  id                        String        @id @default(uuid())
+  tenantId                  String
+  name                      String
+  description               String?
+  templateKey               String?
+  status                    AiAgentStatus @default(DRAFT)
+  provider                  AiProvider    @default(OPENAI)
+  modelName                 String        @default("gpt-4o-mini")
+  temperature               Decimal       @default(0.2) @db.Decimal(3, 2)
+  personality               String        @default("helpful")
+  tone                      String        @default("professional")
+  supportedLanguages        String[]      @default(["English"])
+  systemPrompt              String
+  customPrompt              String?
+  toolPermissions           String[]      @default([])
+  allowedActions            String[]      @default([])
+  handoverRules             String[]      @default([])
+  knowledgeDocumentIds      String[]      @default([])
+  assignedWhatsappAccountId String?
+  assignedChatbotId         String?
+  activeVersion             Int           @default(1)
+  lastTestedAt              DateTime?
+  publishedAt               DateTime?
+  tenant                    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  assignedWhatsappAccount   WhatsAppAccount? @relation(fields: [assignedWhatsappAccountId], references: [id], onDelete: SetNull)
+  assignedChatbot           Chatbot?      @relation(fields: [assignedChatbotId], references: [id], onDelete: SetNull)
+  versions                  AiAgentVersion[]
+  createdAt                 DateTime      @default(now())
+  updatedAt                 DateTime      @updatedAt
+  deletedAt                 DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, assignedWhatsappAccountId])
+  @@index([tenantId, assignedChatbotId])
+  @@index([tenantId, templateKey])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AiAgentVersion {
+  id              String   @id @default(uuid())
+  tenantId        String
+  aiAgentId       String
+  version         Int
+  snapshot        Json
+  changelog       String?
+  createdByUserId String?
+  tenant          Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  aiAgent         AiAgent  @relation(fields: [aiAgentId], references: [id], onDelete: Cascade)
+  createdBy       User?    @relation(fields: [createdByUserId], references: [id], onDelete: SetNull)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  deletedAt       DateTime?
+
+  @@unique([aiAgentId, version])
+  @@index([tenantId])
+  @@index([tenantId, aiAgentId])
+  @@index([tenantId, version])
+  @@index([createdByUserId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model TenantAiSettings {
+  id                 String     @id @default(uuid())
+  tenantId           String     @unique
+  isEnabled          Boolean    @default(false)
+  provider           AiProvider @default(OPENAI)
+  modelName          String     @default("gpt-4o-mini")
+  temperature        Decimal    @default(0.2) @db.Decimal(3, 2)
+  businessName       String?
+  businessDescription String?
+  tone               String     @default("friendly")
+  supportedLanguages String[]   @default(["English"])
+  openingHours       Json?
+  services           String[]   @default([])
+  policies           String[]   @default([])
+  fallbackMessage    String     @default("Thanks for your message. A team member will get back to you shortly.")
+  handoverKeywords   String[]   @default(["human", "agent", "support", "representative"])
+  tenant             Tenant     @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  deletedAt          DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, isEnabled])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model AiLog {
+  id             String        @id @default(uuid())
+  tenantId       String
+  assistantId    String?
+  chatbotId      String?
+  conversationId String?
+  provider       AiProvider
+  modelName      String
+  promptTokens   Int           @default(0)
+  outputTokens   Int           @default(0)
+  status         AiLogStatus   @default(SUCCESS)
+  latencyMs      Int?
+  error          String?
+  metadata       Json?
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  assistant      AiAssistant?  @relation(fields: [assistantId], references: [id], onDelete: SetNull)
+  chatbot        Chatbot?      @relation(fields: [chatbotId], references: [id], onDelete: SetNull)
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, conversationId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Notification {
+  id         String             @id @default(uuid())
+  tenantId   String
+  userId     String?
+  customerId String?
+  title      String
+  body       String?
+  status     NotificationStatus @default(UNREAD)
+  metadata   Json?
+  tenant     Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user       User?              @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customer   Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  deletedAt  DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, userId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Invoice {
+  id             String        @id @default(uuid())
+  tenantId       String
+  subscriptionId String?
+  number         String
+  status         InvoiceStatus @default(DRAFT)
+  subtotal       Decimal       @default(0) @db.Decimal(12, 2)
+  tax            Decimal       @default(0) @db.Decimal(12, 2)
+  total          Decimal       @default(0) @db.Decimal(12, 2)
+  currency       Currency      @default(USD)
+  dueAt          DateTime?
+  paidAt         DateTime?
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  payments       Payment[]
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model Payment {
+  id             String        @id @default(uuid())
+  tenantId       String
+  invoiceId      String?
+  subscriptionId String?
+  amount         Decimal       @db.Decimal(12, 2)
+  currency       Currency      @default(USD)
+  status         PaymentStatus @default(PENDING)
+  provider       String?
+  externalId     String?
+  tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoice        Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}

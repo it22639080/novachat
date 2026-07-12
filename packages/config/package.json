@@ -1,0 +1,11 @@
+{
+  "name": "@novachat/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./eslint": "./eslint/base.mjs",
+    "./prettier": "./prettier/base.mjs",
+    "./tailwind": "./tailwind/base.ts"
+  }
+}

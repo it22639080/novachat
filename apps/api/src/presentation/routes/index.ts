@@ -1,0 +1,1151 @@
+import { Router } from "express";
+import { AdminUsageController } from "../controllers/admin-usage-controller.js";
+import { AdminPlatformController } from "../controllers/admin-platform-controller.js";
+import { AiAgentController } from "../controllers/ai-agent-controller.js";
+import { AiController } from "../controllers/ai-controller.js";
+import { AnalyticsController } from "../controllers/analytics-controller.js";
+import { AppointmentController } from "../controllers/appointment-controller.js";
+import { AuthController } from "../controllers/auth-controller.js";
+import { AuditLogController } from "../controllers/audit-log-controller.js";
+import { BillingController } from "../controllers/billing-controller.js";
+import { CampaignController } from "../controllers/campaign-controller.js";
+import { ChatbotController } from "../controllers/chatbot-controller.js";
+import { CommerceController } from "../controllers/commerce-controller.js";
+import { CrmController } from "../controllers/crm-controller.js";
+import { InboxController } from "../controllers/inbox-controller.js";
+import { KnowledgeController } from "../controllers/knowledge-controller.js";
+import { MeController } from "../controllers/me-controller.js";
+import { MetaEmbeddedSignupController } from "../controllers/meta-embedded-signup-controller.js";
+import { SimulatorController } from "../controllers/simulator-controller.js";
+import { TeamController } from "../controllers/team-controller.js";
+import { UsageController } from "../controllers/usage-controller.js";
+import { WhatsAppController } from "../controllers/whatsapp-controller.js";
+import { authenticate } from "../middleware/authenticate.js";
+import { requirePermission } from "../middleware/require-permission.js";
+import { requireRole } from "../middleware/require-role.js";
+import { requireSuperAdmin } from "../middleware/require-super-admin.js";
+import { tenantContext } from "../middleware/tenant-context.js";
+import { createRateLimiter } from "../middleware/security.js";
+import { asyncHandler } from "../../shared/http/async-handler.js";
+import { env } from "../../config/env.js";
+
+export const apiRouter = Router();
+
+const authController = new AuthController();
+const meController = new MeController();
+const auditLogController = new AuditLogController();
+const teamController = new TeamController();
+const simulatorController = new SimulatorController();
+const whatsAppController = new WhatsAppController();
+const inboxController = new InboxController();
+const crmController = new CrmController();
+const commerceController = new CommerceController();
+const appointmentController = new AppointmentController();
+const analyticsController = new AnalyticsController();
+const chatbotController = new ChatbotController();
+const campaignController = new CampaignController();
+const billingController = new BillingController();
+const aiController = new AiController();
+const knowledgeController = new KnowledgeController();
+const usageController = new UsageController();
+const adminUsageController = new AdminUsageController();
+const adminPlatformController = new AdminPlatformController();
+const aiAgentController = new AiAgentController();
+const metaEmbeddedSignupController = new MetaEmbeddedSignupController();
+
+const metaEmbeddedSignupRateLimiter = createRateLimiter({
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  maxRequests: 30,
+  keyPrefix: "meta-embedded-signup"
+});
+
+apiRouter.get("/health", (_req, res) => {
+  res.status(200).json({
+    success: true,
+    data: {
+      service: "novachat-api",
+      status: "ok"
+    },
+    meta: {
+      timestamp: new Date().toISOString()
+    }
+  });
+});
+
+apiRouter.post("/auth/register", asyncHandler(authController.register.bind(authController)));
+apiRouter.post("/auth/login", asyncHandler(authController.login.bind(authController)));
+apiRouter.post("/auth/logout", asyncHandler(authController.logout.bind(authController)));
+apiRouter.post("/auth/refresh", asyncHandler(authController.refresh.bind(authController)));
+apiRouter.post(
+  "/auth/forgot-password",
+  asyncHandler(authController.forgotPassword.bind(authController))
+);
+apiRouter.post("/auth/reset-password", asyncHandler(authController.resetPassword.bind(authController)));
+apiRouter.get("/auth/me", authenticate, asyncHandler(authController.me.bind(authController)));
+
+apiRouter.get(
+  "/webhooks/whatsapp",
+  asyncHandler(whatsAppController.verifyWebhook.bind(whatsAppController))
+);
+apiRouter.post(
+  "/webhooks/whatsapp",
+  asyncHandler(whatsAppController.handleWebhook.bind(whatsAppController))
+);
+apiRouter.post(
+  "/webhooks/stripe",
+  asyncHandler(billingController.stripeWebhook.bind(billingController))
+);
+apiRouter.post(
+  "/webhooks/payhere",
+  asyncHandler(billingController.payHereWebhook.bind(billingController))
+);
+
+apiRouter.get(
+  "/billing/plans",
+  authenticate,
+  asyncHandler(billingController.plans.bind(billingController))
+);
+apiRouter.post(
+  "/billing/plans",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(billingController.createPlan.bind(billingController))
+);
+apiRouter.patch(
+  "/billing/plans/:code",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(billingController.updatePlan.bind(billingController))
+);
+apiRouter.get(
+  "/billing/subscription",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.subscription.bind(billingController))
+);
+apiRouter.post(
+  "/billing/subscribe",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.subscribe.bind(billingController))
+);
+apiRouter.post(
+  "/billing/upgrade",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.upgrade.bind(billingController))
+);
+apiRouter.post(
+  "/billing/cancel",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.cancel.bind(billingController))
+);
+apiRouter.get(
+  "/billing/invoices",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.invoices.bind(billingController))
+);
+apiRouter.get(
+  "/billing/usage",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.usage.bind(billingController))
+);
+
+apiRouter.post(
+  "/whatsapp/accounts",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.createAccount.bind(whatsAppController))
+);
+apiRouter.get(
+  "/whatsapp/accounts",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.accounts.bind(whatsAppController))
+);
+apiRouter.get(
+  "/whatsapp/webhook-logs",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.webhookLogs.bind(whatsAppController))
+);
+apiRouter.patch(
+  "/whatsapp/accounts/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.updateAccount.bind(whatsAppController))
+);
+apiRouter.delete(
+  "/whatsapp/accounts/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.deleteAccount.bind(whatsAppController))
+);
+apiRouter.post(
+  "/whatsapp/send-text",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.sendText.bind(whatsAppController))
+);
+apiRouter.post(
+  "/whatsapp/send-media",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.sendMedia.bind(whatsAppController))
+);
+apiRouter.post(
+  "/whatsapp/send-template",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.sendTemplate.bind(whatsAppController))
+);
+apiRouter.post(
+  "/whatsapp/send-buttons",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.sendButtons.bind(whatsAppController))
+);
+apiRouter.post(
+  "/whatsapp/send-list",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppController.sendList.bind(whatsAppController))
+);
+
+apiRouter.get(
+  "/meta/embedded-signup/config",
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.config.bind(metaEmbeddedSignupController))
+);
+apiRouter.post(
+  "/meta/embedded-signup/callback",
+  metaEmbeddedSignupRateLimiter,
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.callback.bind(metaEmbeddedSignupController))
+);
+apiRouter.post(
+  "/meta/embedded-signup/complete",
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.complete.bind(metaEmbeddedSignupController))
+);
+apiRouter.post(
+  "/meta/embedded-signup/disconnect",
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.disconnect.bind(metaEmbeddedSignupController))
+);
+apiRouter.get(
+  "/meta/embedded-signup/status",
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.status.bind(metaEmbeddedSignupController))
+);
+apiRouter.post(
+  "/meta/embedded-signup/health-check",
+  authenticate,
+  tenantContext,
+  asyncHandler(metaEmbeddedSignupController.healthCheck.bind(metaEmbeddedSignupController))
+);
+
+apiRouter.post(
+  "/simulator/customers",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.createCustomer.bind(simulatorController))
+);
+apiRouter.get(
+  "/simulator/customers",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.customers.bind(simulatorController))
+);
+apiRouter.post(
+  "/simulator/incoming-message",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.incomingMessage.bind(simulatorController))
+);
+apiRouter.post(
+  "/simulator/outgoing-message",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.outgoingMessage.bind(simulatorController))
+);
+apiRouter.get(
+  "/simulator/conversations",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.conversations.bind(simulatorController))
+);
+apiRouter.post(
+  "/simulator/reset",
+  authenticate,
+  tenantContext,
+  asyncHandler(simulatorController.reset.bind(simulatorController))
+);
+
+apiRouter.get(
+  "/ai/settings",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiController.settings.bind(aiController))
+);
+apiRouter.patch(
+  "/ai/settings",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiController.updateSettings.bind(aiController))
+);
+apiRouter.post(
+  "/ai/test-reply",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiController.testReply.bind(aiController))
+);
+apiRouter.get(
+  "/ai/logs",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiController.logs.bind(aiController))
+);
+apiRouter.patch(
+  "/conversations/:id/ai-toggle",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiController.toggleConversation.bind(aiController))
+);
+
+apiRouter.get(
+  "/ai-agents/templates",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.templates.bind(aiAgentController))
+);
+apiRouter.get(
+  "/ai-agents",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.list.bind(aiAgentController))
+);
+apiRouter.post(
+  "/ai-agents",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.create.bind(aiAgentController))
+);
+apiRouter.get(
+  "/ai-agents/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.get.bind(aiAgentController))
+);
+apiRouter.patch(
+  "/ai-agents/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.update.bind(aiAgentController))
+);
+apiRouter.delete(
+  "/ai-agents/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.delete.bind(aiAgentController))
+);
+apiRouter.get(
+  "/ai-agents/:id/versions",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.versions.bind(aiAgentController))
+);
+apiRouter.post(
+  "/ai-agents/:id/versions",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.createVersion.bind(aiAgentController))
+);
+apiRouter.post(
+  "/ai-agents/:id/activate",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.activate.bind(aiAgentController))
+);
+apiRouter.post(
+  "/ai-agents/:id/deactivate",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.deactivate.bind(aiAgentController))
+);
+apiRouter.post(
+  "/ai-agents/:id/test",
+  authenticate,
+  tenantContext,
+  asyncHandler(aiAgentController.test.bind(aiAgentController))
+);
+
+apiRouter.post(
+  "/ai/commerce-tools",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.executeAiTool.bind(commerceController))
+);
+
+apiRouter.post(
+  "/ai/appointment-tools",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.executeAiTool.bind(appointmentController))
+);
+
+apiRouter.get(
+  "/analytics/overview",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.overview.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/conversations",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.conversations.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/leads",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.leads.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/orders",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.orders.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/agents",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.agents.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/ai",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.ai.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/export/csv",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.exportCsv.bind(analyticsController))
+);
+apiRouter.get(
+  "/analytics/export/pdf",
+  authenticate,
+  tenantContext,
+  asyncHandler(analyticsController.exportPdf.bind(analyticsController))
+);
+
+apiRouter.get(
+  "/chatbots",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.chatbots.bind(chatbotController))
+);
+apiRouter.post(
+  "/chatbots",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.createChatbot.bind(chatbotController))
+);
+apiRouter.get(
+  "/chatbots/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.chatbot.bind(chatbotController))
+);
+apiRouter.patch(
+  "/chatbots/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.updateChatbot.bind(chatbotController))
+);
+apiRouter.delete(
+  "/chatbots/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.deleteChatbot.bind(chatbotController))
+);
+apiRouter.post(
+  "/chatbots/:id/flows",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.saveFlow.bind(chatbotController))
+);
+apiRouter.post(
+  "/chatbots/:id/publish",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.publish.bind(chatbotController))
+);
+apiRouter.post(
+  "/chatbots/:id/test",
+  authenticate,
+  tenantContext,
+  asyncHandler(chatbotController.test.bind(chatbotController))
+);
+
+apiRouter.get(
+  "/campaigns",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.campaigns.bind(campaignController))
+);
+apiRouter.post(
+  "/campaigns",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.createCampaign.bind(campaignController))
+);
+apiRouter.get(
+  "/campaigns/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.campaign.bind(campaignController))
+);
+apiRouter.patch(
+  "/campaigns/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.updateCampaign.bind(campaignController))
+);
+apiRouter.delete(
+  "/campaigns/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.deleteCampaign.bind(campaignController))
+);
+apiRouter.post(
+  "/campaigns/:id/schedule",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.schedule.bind(campaignController))
+);
+apiRouter.post(
+  "/campaigns/:id/send-now",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.sendNow.bind(campaignController))
+);
+apiRouter.post(
+  "/campaigns/:id/stop",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.stop.bind(campaignController))
+);
+apiRouter.get(
+  "/campaigns/:id/analytics",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.analytics.bind(campaignController))
+);
+apiRouter.get(
+  "/templates",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.templates.bind(campaignController))
+);
+apiRouter.post(
+  "/templates",
+  authenticate,
+  tenantContext,
+  asyncHandler(campaignController.createTemplate.bind(campaignController))
+);
+
+apiRouter.get(
+  "/services",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.services.bind(appointmentController))
+);
+apiRouter.post(
+  "/services",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.createService.bind(appointmentController))
+);
+apiRouter.patch(
+  "/services/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.updateService.bind(appointmentController))
+);
+apiRouter.delete(
+  "/services/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.deleteService.bind(appointmentController))
+);
+apiRouter.get(
+  "/staff-availability",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.staffAvailability.bind(appointmentController))
+);
+apiRouter.post(
+  "/staff-availability",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.createStaffAvailability.bind(appointmentController))
+);
+apiRouter.get(
+  "/appointments/availability",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.availability.bind(appointmentController))
+);
+apiRouter.get(
+  "/appointments",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.appointments.bind(appointmentController))
+);
+apiRouter.post(
+  "/appointments",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.createAppointment.bind(appointmentController))
+);
+apiRouter.patch(
+  "/appointments/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.updateAppointment.bind(appointmentController))
+);
+apiRouter.delete(
+  "/appointments/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.deleteAppointment.bind(appointmentController))
+);
+apiRouter.post(
+  "/appointments/:id/send-reminder",
+  authenticate,
+  tenantContext,
+  asyncHandler(appointmentController.sendReminder.bind(appointmentController))
+);
+
+apiRouter.get(
+  "/product-categories",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.productCategories.bind(commerceController))
+);
+apiRouter.post(
+  "/product-categories",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.createProductCategory.bind(commerceController))
+);
+apiRouter.get(
+  "/products",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.products.bind(commerceController))
+);
+apiRouter.post(
+  "/products",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.createProduct.bind(commerceController))
+);
+apiRouter.patch(
+  "/products/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.updateProduct.bind(commerceController))
+);
+apiRouter.delete(
+  "/products/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.deleteProduct.bind(commerceController))
+);
+apiRouter.get(
+  "/orders",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.orders.bind(commerceController))
+);
+apiRouter.post(
+  "/orders",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.createOrder.bind(commerceController))
+);
+apiRouter.get(
+  "/orders/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.order.bind(commerceController))
+);
+apiRouter.patch(
+  "/orders/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.updateOrder.bind(commerceController))
+);
+apiRouter.patch(
+  "/orders/:id/status",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.updateOrderStatus.bind(commerceController))
+);
+apiRouter.post(
+  "/orders/:id/confirm",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.confirmOrder.bind(commerceController))
+);
+apiRouter.post(
+  "/orders/:id/send-confirmation",
+  authenticate,
+  tenantContext,
+  asyncHandler(commerceController.sendConfirmation.bind(commerceController))
+);
+
+apiRouter.post(
+  "/knowledge/documents",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.create.bind(knowledgeController))
+);
+apiRouter.get(
+  "/knowledge/documents",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.list.bind(knowledgeController))
+);
+apiRouter.get(
+  "/knowledge/documents/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.detail.bind(knowledgeController))
+);
+apiRouter.delete(
+  "/knowledge/documents/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.delete.bind(knowledgeController))
+);
+apiRouter.post(
+  "/knowledge/documents/:id/reprocess",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.reprocess.bind(knowledgeController))
+);
+apiRouter.post(
+  "/knowledge/test-search",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.testSearch.bind(knowledgeController))
+);
+apiRouter.post(
+  "/knowledge/test-answer",
+  authenticate,
+  tenantContext,
+  asyncHandler(knowledgeController.testAnswer.bind(knowledgeController))
+);
+
+apiRouter.get(
+  "/usage/summary",
+  authenticate,
+  tenantContext,
+  asyncHandler(usageController.summary.bind(usageController))
+);
+apiRouter.get(
+  "/usage/events",
+  authenticate,
+  tenantContext,
+  asyncHandler(usageController.events.bind(usageController))
+);
+apiRouter.get(
+  "/usage/costs",
+  authenticate,
+  tenantContext,
+  asyncHandler(usageController.costs.bind(usageController))
+);
+
+apiRouter.get(
+  "/admin/overview",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.overview.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/tenants",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.tenants.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/tenants/:tenantId",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.tenantDetail.bind(adminPlatformController))
+);
+apiRouter.patch(
+  "/admin/tenants/:tenantId/status",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.updateTenantStatus.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/whatsapp/:accountId/health-check",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(metaEmbeddedSignupController.adminHealthCheck.bind(metaEmbeddedSignupController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/whatsapp/:accountId/disconnect",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(metaEmbeddedSignupController.adminDisconnect.bind(metaEmbeddedSignupController))
+);
+apiRouter.patch(
+  "/admin/tenants/:tenantId/whatsapp/:accountId/status",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(metaEmbeddedSignupController.adminOverrideStatus.bind(metaEmbeddedSignupController))
+);
+apiRouter.get(
+  "/admin/users",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.users.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/plans",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.plans.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/subscriptions",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.subscriptions.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/billing",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.billing.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/usage",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.usage.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/audit-logs",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.auditLogs.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/system-health",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.systemHealth.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/settings",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.settings.bind(adminPlatformController))
+);
+apiRouter.patch(
+  "/admin/settings/feature-flags",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.updateFeatureFlags.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/announcements",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.createAnnouncement.bind(adminPlatformController))
+);
+
+apiRouter.get(
+  "/admin/tenants/:tenantId/usage",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminUsageController.summary.bind(adminUsageController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/credits/add",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminUsageController.addCredits.bind(adminUsageController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/limits/update",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminUsageController.updateLimits.bind(adminUsageController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/model/update",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminUsageController.updateModel.bind(adminUsageController))
+);
+apiRouter.post(
+  "/admin/tenants/:tenantId/usage/reset",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminUsageController.reset.bind(adminUsageController))
+);
+
+apiRouter.get(
+  "/inbox/conversations",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.conversations.bind(inboxController))
+);
+apiRouter.get(
+  "/inbox/conversations/search",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.search.bind(inboxController))
+);
+apiRouter.get(
+  "/inbox/assignees",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.assignees.bind(inboxController))
+);
+apiRouter.get(
+  "/inbox/conversations/:id/messages",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.thread.bind(inboxController))
+);
+apiRouter.post(
+  "/inbox/conversations/:id/messages",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.sendMessage.bind(inboxController))
+);
+apiRouter.patch(
+  "/inbox/conversations/:id/assign",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.assign.bind(inboxController))
+);
+apiRouter.patch(
+  "/inbox/conversations/:id/status",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.changeStatus.bind(inboxController))
+);
+apiRouter.post(
+  "/inbox/conversations/:id/read",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.markRead.bind(inboxController))
+);
+apiRouter.post(
+  "/inbox/conversations/:id/notes",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.createNote.bind(inboxController))
+);
+apiRouter.post(
+  "/inbox/conversations/:id/tags",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.addTag.bind(inboxController))
+);
+apiRouter.delete(
+  "/inbox/conversations/:id/tags/:tagId",
+  authenticate,
+  tenantContext,
+  asyncHandler(inboxController.removeTag.bind(inboxController))
+);
+
+apiRouter.get(
+  "/customers/export",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.exportCustomers.bind(crmController))
+);
+apiRouter.get(
+  "/customers",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.customers.bind(crmController))
+);
+apiRouter.post(
+  "/customers",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.createCustomer.bind(crmController))
+);
+apiRouter.post(
+  "/customers/import",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.importCustomers.bind(crmController))
+);
+apiRouter.get(
+  "/customers/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.customerProfile.bind(crmController))
+);
+apiRouter.patch(
+  "/customers/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.updateCustomer.bind(crmController))
+);
+apiRouter.delete(
+  "/customers/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.deleteCustomer.bind(crmController))
+);
+apiRouter.post(
+  "/customers/:id/notes",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.customerNote.bind(crmController))
+);
+apiRouter.post(
+  "/customers/:id/tags",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.addCustomerTag.bind(crmController))
+);
+apiRouter.delete(
+  "/customers/:id/tags",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.removeCustomerTag.bind(crmController))
+);
+
+apiRouter.get(
+  "/leads/kanban",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.kanban.bind(crmController))
+);
+apiRouter.get(
+  "/leads",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.leads.bind(crmController))
+);
+apiRouter.post(
+  "/leads",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.createLead.bind(crmController))
+);
+apiRouter.patch(
+  "/leads/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.updateLead.bind(crmController))
+);
+apiRouter.delete(
+  "/leads/:id",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.deleteLead.bind(crmController))
+);
+apiRouter.patch(
+  "/leads/:id/stage",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.moveLeadStage.bind(crmController))
+);
+apiRouter.patch(
+  "/leads/:id/outcome",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.outcome.bind(crmController))
+);
+apiRouter.get(
+  "/lead-stages",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.leadStages.bind(crmController))
+);
+apiRouter.post(
+  "/lead-stages",
+  authenticate,
+  tenantContext,
+  asyncHandler(crmController.createLeadStage.bind(crmController))
+);
+
+apiRouter.get("/me/tenants", authenticate, asyncHandler(meController.tenants.bind(meController)));
+apiRouter.get("/tenants/my-tenants", authenticate, asyncHandler(meController.tenants.bind(meController)));
+apiRouter.post(
+  "/tenants/switch",
+  authenticate,
+  asyncHandler(authController.switchTenant.bind(authController))
+);
+
+apiRouter.post(
+  "/team/invite",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  requirePermission("members.manage"),
+  asyncHandler(teamController.invite.bind(teamController))
+);
+
+apiRouter.get(
+  "/team/members",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  requirePermission("members.manage"),
+  asyncHandler(teamController.members.bind(teamController))
+);
+
+apiRouter.patch(
+  "/team/members/:id/role",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  requirePermission("members.manage"),
+  asyncHandler(teamController.updateRole.bind(teamController))
+);
+
+apiRouter.delete(
+  "/team/members/:id",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  requirePermission("members.manage"),
+  asyncHandler(teamController.remove.bind(teamController))
+);
+
+apiRouter.get(
+  "/tenants/:tenantId/audit-logs",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  asyncHandler(auditLogController.index.bind(auditLogController))
+);
