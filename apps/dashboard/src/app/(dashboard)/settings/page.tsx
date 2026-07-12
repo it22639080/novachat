@@ -240,9 +240,11 @@ export default function SettingsPage() {
       const response = await new Promise<FacebookLoginResponse>((resolve) => {
         window.FB?.login(resolve, {
           config_id: metaConfig.configId,
-          response_type: "code",
-          override_default_response_type: true,
-          extras: { setup: {} }
+          response_type: "token",
+          extras: {
+            setup: {},
+            sessionInfoVersion: "3"
+          }
         });
       });
 
