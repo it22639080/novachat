@@ -44,7 +44,7 @@ META_WEBHOOK_VERIFY_TOKEN=your_verify_token
 META_SYSTEM_USER_ACCESS_TOKEN=optional_backend_only_system_user_token
 META_EMBEDDED_SIGNUP_ENABLED=true
 META_COEXISTENCE_ONBOARDING_ENABLED=true
-META_EMBEDDED_SIGNUP_FEATURE_TYPE=
+META_EMBEDDED_SIGNUP_FEATURE_TYPE=whatsapp_business_app_onboarding
 ```
 
 Dashboard:
@@ -53,7 +53,7 @@ Dashboard:
 NEXT_PUBLIC_API_URL=https://novachat-api-production-a673.up.railway.app/api/v1
 ```
 
-`META_EMBEDDED_SIGNUP_FEATURE_TYPE` is intentionally optional. Some Meta configurations only require `config_id`; if Meta's current documentation or your app dashboard gives a specific feature type for WhatsApp Business App onboarding/coexistence, set it here. NovaChat will pass it to the Facebook SDK inside `extras.featureType`.
+For WhatsApp Business App coexistence, set `META_EMBEDDED_SIGNUP_FEATURE_TYPE=whatsapp_business_app_onboarding`. NovaChat also defaults to this value when `META_COEXISTENCE_ONBOARDING_ENABLED=true`, but keeping it explicit in Railway makes production diagnostics clearer.
 
 ## Meta Dashboard Configuration
 
@@ -90,7 +90,8 @@ NEXT_PUBLIC_API_URL=https://novachat-api-production-a673.up.railway.app/api/v1
 9. Copy its Configuration ID.
 10. Set that value as `META_CONFIG_ID` in Railway.
 11. Set `META_COEXISTENCE_ONBOARDING_ENABLED=true` in Railway.
-12. Redeploy/restart the API service.
+12. Set `META_EMBEDDED_SIGNUP_FEATURE_TYPE=whatsapp_business_app_onboarding` in Railway.
+13. Redeploy/restart the API service.
 
 ## System User Token Notes
 
