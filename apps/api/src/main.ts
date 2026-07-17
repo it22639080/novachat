@@ -72,6 +72,7 @@ async function bootstrap() {
         hasMetaWebhookVerifyToken: Boolean(env.META_WEBHOOK_VERIFY_TOKEN),
         hasMetaSystemUserToken: Boolean(env.META_SYSTEM_USER_ACCESS_TOKEN),
         coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+        embeddedSignupFeature: env.META_EMBEDDED_SIGNUP_FEATURE ?? "whatsapp_embedded_signup",
         embeddedSignupFeatureType:
           env.META_EMBEDDED_SIGNUP_FEATURE_TYPE
           ?? (env.META_COEXISTENCE_ONBOARDING_ENABLED ? "whatsapp_business_app_onboarding" : null)

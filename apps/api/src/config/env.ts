@@ -55,6 +55,7 @@ const envSchema = z.object({
   META_SYSTEM_USER_ACCESS_TOKEN: optionalNonEmptyString,
   META_ALLOW_EXISTING_WHATSAPP_FALLBACK: booleanEnv.default(false),
   META_COEXISTENCE_ONBOARDING_ENABLED: booleanEnv.default(false),
+  META_EMBEDDED_SIGNUP_FEATURE: optionalNonEmptyString,
   META_EMBEDDED_SIGNUP_FEATURE_TYPE: optionalNonEmptyString,
   META_EMBEDDED_SIGNUP_ENABLED: booleanEnv.default(false),
   OPENAI_API_KEY: optionalNonEmptyString,

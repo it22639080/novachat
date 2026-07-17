@@ -12,6 +12,7 @@ import { MetaGraphClient } from "../../infrastructure/meta/meta-graph-client.js"
 import { AppError, badRequest, forbidden, notFound, serviceUnavailable } from "../../shared/errors/app-error.js";
 
 const metaGraphClient = new MetaGraphClient();
+const WHATSAPP_EMBEDDED_SIGNUP_FEATURE = "whatsapp_embedded_signup";
 const WHATSAPP_BUSINESS_APP_ONBOARDING_FEATURE_TYPE = "whatsapp_business_app_onboarding";
 
 type MetaChecklistItem = {
@@ -86,6 +87,10 @@ function embeddedSignupFeatureType() {
     ?? (env.META_COEXISTENCE_ONBOARDING_ENABLED ? WHATSAPP_BUSINESS_APP_ONBOARDING_FEATURE_TYPE : null);
 }
 
+function embeddedSignupFeature() {
+  return env.META_EMBEDDED_SIGNUP_FEATURE ?? WHATSAPP_EMBEDDED_SIGNUP_FEATURE;
+}
+
 export class MetaEmbeddedSignupService {
   config() {
     const featureType = embeddedSignupFeatureType();
@@ -96,6 +101,7 @@ export class MetaEmbeddedSignupService {
       apiVersion: env.META_API_VERSION,
       redirectUri: env.META_REDIRECT_URI ?? null,
       coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+      feature: embeddedSignupFeature(),
       featureType,
       embeddedSignupEnabled: env.META_EMBEDDED_SIGNUP_ENABLED && metaGraphClient.isConfigured
     };
@@ -124,6 +130,7 @@ export class MetaEmbeddedSignupService {
         appId: env.META_APP_ID ?? null,
         configId: env.META_CONFIG_ID ?? null,
         coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+        embeddedSignupFeature: embeddedSignupFeature(),
         embeddedSignupFeatureType: embeddedSignupFeatureType(),
         onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP"
       },
@@ -285,6 +292,7 @@ export class MetaEmbeddedSignupService {
             novaChat: {
               onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
               coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+              embeddedSignupFeature: embeddedSignupFeature(),
               embeddedSignupFeatureType: embeddedSignupFeatureType()
             }
           }) as Prisma.InputJsonValue,
@@ -310,6 +318,7 @@ export class MetaEmbeddedSignupService {
             novaChat: {
               onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
               coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+              embeddedSignupFeature: embeddedSignupFeature(),
               embeddedSignupFeatureType: embeddedSignupFeatureType()
             }
           }) as Prisma.InputJsonValue
@@ -330,6 +339,7 @@ export class MetaEmbeddedSignupService {
             hasToken: true,
             onboardingMode: input.onboardingMode ?? "EMBEDDED_SIGNUP",
             coexistenceOnboardingEnabled: env.META_COEXISTENCE_ONBOARDING_ENABLED,
+            embeddedSignupFeature: embeddedSignupFeature(),
             embeddedSignupFeatureType: embeddedSignupFeatureType()
           }
         }

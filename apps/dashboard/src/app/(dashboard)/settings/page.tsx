@@ -64,6 +64,7 @@ type MetaConfig = {
   apiVersion: string;
   redirectUri: string | null;
   coexistenceOnboardingEnabled: boolean;
+  feature: string | null;
   featureType: string | null;
   embeddedSignupEnabled: boolean;
 };
@@ -302,6 +303,7 @@ export default function SettingsPage() {
         apiVersion: metaConfig.apiVersion,
         redirectUri: metaConfig.redirectUri,
         coexistenceOnboardingEnabled: metaConfig.coexistenceOnboardingEnabled,
+        feature: metaConfig.feature,
         featureType: metaConfig.featureType
       });
 
@@ -320,6 +322,7 @@ export default function SettingsPage() {
 
       const extras: Record<string, unknown> = {
         setup: {},
+        feature: metaConfig.feature ?? "whatsapp_embedded_signup",
         sessionInfoVersion: "3"
       };
 
@@ -375,6 +378,7 @@ export default function SettingsPage() {
             apiVersion: metaConfig.apiVersion,
             redirectUri: metaConfig.redirectUri,
             coexistenceOnboardingEnabled: metaConfig.coexistenceOnboardingEnabled,
+            feature: metaConfig.feature,
             featureType: metaConfig.featureType
           }
         }
