@@ -12,7 +12,13 @@ type TenantEvent =
   | "conversation:updated"
   | "conversation:assigned"
   | "message:read"
-  | "note:created";
+  | "note:created"
+  | "whatsapp.web.status"
+  | "whatsapp.web.connected"
+  | "whatsapp.web.disconnected"
+  | "whatsapp.web.error";
+
+type TenantUserEvent = "whatsapp.web.qr" | TenantEvent;
 
 const tokenService = new TokenService();
 
@@ -68,8 +74,10 @@ export function initRealtime(httpServer: HttpServer) {
 
   io.on("connection", (socket) => {
     const tenantId = socket.data.tenantId as string;
+    const userId = socket.data.userId as string;
     socket.join(tenantRoom(tenantId));
-    logger.info({ socketId: socket.id, tenantId }, "Realtime client connected");
+    socket.join(tenantUserRoom(tenantId, userId));
+    logger.info({ socketId: socket.id, tenantId, userId }, "Realtime client connected");
 
     socket.on("disconnect", (reason) => {
       logger.info({ socketId: socket.id, tenantId, reason }, "Realtime client disconnected");
@@ -83,6 +91,10 @@ export function publishTenantEvent(tenantId: string, event: TenantEvent, payload
   io?.to(tenantRoom(tenantId)).emit(event, payload);
 }
 
+export function publishTenantUserEvent(tenantId: string, userId: string, event: TenantUserEvent, payload: unknown) {
+  io?.to(tenantUserRoom(tenantId, userId)).emit(event, payload);
+}
+
 export function createRealtimeServer(app: RequestListener) {
   const httpServer = createServer(app);
   initRealtime(httpServer);
@@ -91,4 +103,8 @@ export function createRealtimeServer(app: RequestListener) {
 
 function tenantRoom(tenantId: string) {
   return `tenant:${tenantId}`;
+}
+
+function tenantUserRoom(tenantId: string, userId: string) {
+  return `tenant:${tenantId}:user:${userId}`;
 }

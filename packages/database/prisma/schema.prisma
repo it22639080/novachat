@@ -85,6 +85,38 @@ enum WhatsAppAccountStatus {
 enum WhatsAppOnboardingMethod {
   MANUAL
   EMBEDDED_SIGNUP
+  WHATSAPP_WEB_EXPERIMENTAL
+}
+
+enum WhatsAppProviderType {
+  META_CLOUD
+  WHATSAPP_WEB_EXPERIMENTAL
+}
+
+enum WhatsAppWebSessionStatus {
+  DISCONNECTED
+  INITIALIZING
+  QR_REQUIRED
+  CONNECTING
+  CONNECTED
+  RECONNECTING
+  SESSION_EXPIRED
+  AUTH_FAILURE
+  ERROR
+}
+
+enum WhatsAppOutboundOrigin {
+  AI
+  AGENT
+  SYSTEM
+}
+
+enum WhatsAppOutboundStatus {
+  QUEUED
+  PROCESSING
+  SENT
+  FAILED
+  BLOCKED
 }
 
 enum MetaConnectionLogStatus {
@@ -361,6 +393,8 @@ model Tenant {
   metaConnectionLogs     MetaConnectionLog[]
   whatsappWebhookLogs    WhatsAppWebhookLog[]
   whatsappAccounts       WhatsAppAccount[]
+  whatsappWebSessions    WhatsAppWebSession[]
+  whatsappOutboundJobs   WhatsAppOutboundJob[]
   customers              Customer[]
   conversations          Conversation[]
   messages               Message[]
@@ -732,6 +766,7 @@ model WhatsAppAccount {
   aiAgents             AiAgent[]
   metaConnectionLogs   MetaConnectionLog[]
   webhookLogs          WhatsAppWebhookLog[]
+  webSession           WhatsAppWebSession?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   deletedAt            DateTime?
@@ -784,6 +819,72 @@ model WhatsAppWebhookLog {
   @@index([whatsappAccountId])
   @@index([status])
   @@index([createdAt])
+}
+
+model WhatsAppWebSession {
+  id                    String                    @id @default(uuid())
+  tenantId              String
+  whatsappAccountId     String?                   @unique
+  providerType          WhatsAppProviderType       @default(WHATSAPP_WEB_EXPERIMENTAL)
+  status                WhatsAppWebSessionStatus   @default(DISCONNECTED)
+  displayNumber         String?
+  displayName           String?
+  encryptedSessionState String?
+  sessionKeyVersion     Int                       @default(1)
+  connectedInstanceId   String?
+  explicitDisconnect    Boolean                   @default(false)
+  lastConnectedAt       DateTime?
+  lastDisconnectedAt    DateTime?
+  lastHeartbeatAt       DateTime?
+  reconnectAttempts     Int                       @default(0)
+  failureReason         String?
+  tenant                Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  whatsappAccount       WhatsAppAccount?          @relation(fields: [whatsappAccountId], references: [id], onDelete: SetNull)
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
+  deletedAt             DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([providerType])
+  @@index([status])
+  @@index([lastHeartbeatAt])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model WhatsAppOutboundJob {
+  id                String                 @id @default(uuid())
+  tenantId          String
+  providerType      WhatsAppProviderType
+  connectionId      String
+  conversationId    String
+  incomingMessageId String?
+  internalMessageId String
+  recipient         String
+  text              String
+  origin            WhatsAppOutboundOrigin
+  status            WhatsAppOutboundStatus @default(QUEUED)
+  externalMessageId String?
+  failureReason     String?
+  attempts          Int                    @default(0)
+  sentAt            DateTime?
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  deletedAt         DateTime?
+
+  @@unique([tenantId, internalMessageId])
+  @@index([tenantId])
+  @@index([tenantId, providerType])
+  @@index([tenantId, status])
+  @@index([connectionId])
+  @@index([conversationId])
+  @@index([incomingMessageId])
+  @@index([internalMessageId])
+  @@index([externalMessageId])
+  @@index([createdAt])
+  @@index([deletedAt])
 }
 
 model Customer {

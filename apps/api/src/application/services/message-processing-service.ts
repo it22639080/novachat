@@ -22,6 +22,7 @@ type IncomingInput = {
   externalId?: string;
   whatsappAccountId?: string;
   whatsappWaId?: string;
+  providerName?: string;
   rawPayload?: unknown;
 };
 
@@ -35,6 +36,7 @@ type OutgoingInput = {
   source: "simulator" | "whatsapp";
   externalId?: string;
   whatsappAccountId?: string;
+  providerName?: string;
   rawPayload?: unknown;
   senderType?: "USER" | "AI" | "SYSTEM";
 };
@@ -238,7 +240,7 @@ export class MessageProcessingService {
           externalId,
           metadata: {
             source: input.source,
-            provider: input.source === "whatsapp" ? "meta-whatsapp-cloud-api" : "simulator",
+            provider: input.providerName ?? (input.source === "whatsapp" ? "meta-whatsapp-cloud-api" : "simulator"),
             providerMessageId: externalId,
             messageType: input.type,
             interactivePayload: input.interactivePayload ?? null,
@@ -320,7 +322,7 @@ export class MessageProcessingService {
         externalId: input.externalId ?? `${input.source === "whatsapp" ? "wa" : "sim"}_out_${randomUUID()}`,
         metadata: {
           source: input.source,
-          provider: input.source === "whatsapp" ? "meta-whatsapp-cloud-api" : "simulator",
+          provider: input.providerName ?? (input.source === "whatsapp" ? "meta-whatsapp-cloud-api" : "simulator"),
           messageType: input.type,
           deliveryStatus: input.status ?? "sent",
           rawPayload: input.rawPayload ?? null

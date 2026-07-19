@@ -79,6 +79,14 @@ export const sendWhatsAppListSchema = sendWhatsAppBaseSchema.extend({
     .max(10)
 });
 
+export const whatsAppWebConnectSchema = z.object({
+  acknowledgementAccepted: z.literal(true)
+});
+
+export const whatsAppWebDisconnectSchema = z.object({
+  deleteSession: z.boolean().default(false)
+});
+
 export type CreateWhatsAppAccountInput = z.infer<typeof createWhatsAppAccountSchema>;
 export type UpdateWhatsAppAccountInput = z.infer<typeof updateWhatsAppAccountSchema>;
 export type SendWhatsAppTextInput = z.infer<typeof sendWhatsAppTextSchema>;
@@ -86,3 +94,5 @@ export type SendWhatsAppMediaInput = z.infer<typeof sendWhatsAppMediaSchema>;
 export type SendWhatsAppTemplateInput = z.infer<typeof sendWhatsAppTemplateSchema>;
 export type SendWhatsAppButtonsInput = z.infer<typeof sendWhatsAppButtonsSchema>;
 export type SendWhatsAppListInput = z.infer<typeof sendWhatsAppListSchema>;
+export type WhatsAppWebConnectInput = z.infer<typeof whatsAppWebConnectSchema>;
+export type WhatsAppWebDisconnectInput = z.infer<typeof whatsAppWebDisconnectSchema>;

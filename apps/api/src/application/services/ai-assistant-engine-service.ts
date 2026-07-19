@@ -12,8 +12,7 @@ import { buildSystemPrompt, buildUserPrompt } from "../ai/prompt-builder.js";
 import { MessageProcessingService } from "./message-processing-service.js";
 import { KnowledgeService } from "./knowledge-service.js";
 import { ChatbotService } from "./chatbot-service.js";
-import { WhatsAppCloudClient } from "../../infrastructure/whatsapp/whatsapp-cloud-client.js";
-import { decryptSecret } from "../../infrastructure/crypto/secret-crypto.js";
+import { whatsAppOutboundService } from "./whatsapp-outbound-service.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../infrastructure/logger/logger.js";
 import { OpenAiProviderError } from "../../infrastructure/ai/openai-provider.js";
@@ -30,7 +29,6 @@ type IncomingAiParams = {
 const openAiProvider = new OpenAiProvider();
 const geminiProvider = new GeminiPlaceholderProvider();
 const messageProcessingService = new MessageProcessingService();
-const whatsappCloudClient = new WhatsAppCloudClient();
 const knowledgeService = new KnowledgeService();
 const usageService = new UsageService();
 const chatbotService = new ChatbotService();
@@ -425,60 +423,14 @@ export class AiAssistantEngineService {
       });
     }
 
-    const account = await prisma.whatsAppAccount.findFirst({
-      where: {
-        tenantId: input.tenantId,
-        ...(input.whatsappAccountId ? { id: input.whatsappAccountId } : {}),
-        deletedAt: null
-      }
-    });
-
-    if (!account?.encryptedAccessToken) {
-      throw notFound("WhatsApp account or access token not found for AI reply");
-    }
-
-    const payload = {
-      messaging_product: "whatsapp",
-      recipient_type: "individual",
-      to: input.customerPhone.replace(/[^\d+]/g, ""),
-      type: "text",
-      text: {
-        preview_url: false,
-        body: input.text
-      }
-    };
-    const whatsappReservation = await usageService.reserveWhatsappMessage(input.tenantId);
-    let response: Awaited<ReturnType<WhatsAppCloudClient["sendMessage"]>>;
-
-    try {
-      response = await whatsappCloudClient.sendMessage({
-        phoneNumberId: account.phoneNumberId,
-        accessToken: decryptSecret(account.encryptedAccessToken),
-        payload
-      });
-    } catch (error) {
-      await usageService.releaseWhatsappReservation(input.tenantId, whatsappReservation);
-      throw error;
-    }
-    const providerMessageId = response?.messages?.[0]?.id;
-    await usageService.recordWhatsappMessage(input.tenantId, {
-      source: "ai_reply",
-      conversationId: input.conversationId,
-      providerMessageId: providerMessageId ?? null
-    });
-
-    return messageProcessingService.processOutgoing({
+    const result = await whatsAppOutboundService.enqueueConversationText({
       tenantId: input.tenantId,
       conversationId: input.conversationId,
-      whatsappAccountId: account.id,
-      source: "whatsapp",
-      senderType: "AI",
-      type: "text",
       text: input.text,
-      status: "sent",
-      ...(providerMessageId ? { externalId: providerMessageId } : {}),
-      rawPayload: { request: payload, response }
+      origin: "AI"
     });
+
+    return result;
   }
 
   private buildMessages(

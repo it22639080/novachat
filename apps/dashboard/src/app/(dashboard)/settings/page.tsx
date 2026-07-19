@@ -1,13 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, EyeOff, Globe2, Link2, MessageSquareText, Plus, RefreshCw, Send, ShieldCheck, Unlink } from "lucide-react";
+import { AlertTriangle, CheckCircle2, EyeOff, Globe2, Link2, LogOut, MessageSquareText, Plus, QrCode, RefreshCw, Send, ShieldCheck, Unlink } from "lucide-react";
 import { motion } from "framer-motion";
+import { QRCodeSVG } from "qrcode.react";
+import { io, type Socket } from "socket.io-client";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle } from "@novachat/ui";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { StatusBadge } from "@/components/dashboard/status-badge";
 import { useAuth } from "@/components/auth/auth-provider";
-import { apiClient, ApiClientError } from "@/lib/api-client";
+import { apiClient, ApiClientError, API_ORIGIN } from "@/lib/api-client";
 
 declare global {
   interface Window {
@@ -97,6 +99,54 @@ type WebhookLog = {
   updatedAt: string;
 };
 
+type WhatsAppWebSession = {
+  id: string;
+  providerType: "WHATSAPP_WEB_EXPERIMENTAL";
+  status:
+    | "DISCONNECTED"
+    | "INITIALIZING"
+    | "QR_REQUIRED"
+    | "CONNECTING"
+    | "CONNECTED"
+    | "RECONNECTING"
+    | "SESSION_EXPIRED"
+    | "AUTH_FAILURE"
+    | "ERROR";
+  displayNumber: string | null;
+  displayName: string | null;
+  explicitDisconnect: boolean;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+  lastHeartbeatAt: string | null;
+  reconnectAttempts: number;
+  failureReason: string | null;
+  account: {
+    id: string;
+    displayName: string | null;
+    displayPhoneNumber: string;
+    status: string;
+    onboardingMethod: string;
+    lastWebhookAt: string | null;
+  } | null;
+};
+
+type WhatsAppWebStatus = {
+  enabled: boolean;
+  qrTtlSeconds: number;
+  session: WhatsAppWebSession | null;
+};
+
+type WhatsAppWebSocketPayload = {
+  connectionId: string;
+  status?: WhatsAppWebSession["status"];
+  displayNumber?: string | null;
+  displayName?: string | null;
+  failureReason?: string | null;
+  qr?: string;
+  expiresAt?: string;
+  message?: string;
+};
+
 function errorMessage(error: unknown) {
   if (error instanceof ApiClientError) return error.message;
   if (error instanceof Error) return error.message;
@@ -179,10 +229,15 @@ function loadFacebookSdk() {
 export default function SettingsPage() {
   const { activeTenant } = useAuth();
   const tenantOptions = activeTenant?.id ? { tenantId: activeTenant.id } : {};
-  const [activeTab, setActiveTab] = React.useState<"automatic" | "manual">("automatic");
+  const [activeTab, setActiveTab] = React.useState<"automatic" | "experimental" | "manual">("automatic");
   const [accounts, setAccounts] = React.useState<WhatsAppAccount[]>([]);
   const [metaConfig, setMetaConfig] = React.useState<MetaConfig | null>(null);
   const [metaStatus, setMetaStatus] = React.useState<MetaStatus | null>(null);
+  const [webStatus, setWebStatus] = React.useState<WhatsAppWebStatus | null>(null);
+  const [webQr, setWebQr] = React.useState<string | null>(null);
+  const [webQrExpiresAt, setWebQrExpiresAt] = React.useState<string | null>(null);
+  const [webQrSecondsRemaining, setWebQrSecondsRemaining] = React.useState(0);
+  const [webAcknowledged, setWebAcknowledged] = React.useState(false);
   const [webhookLogs, setWebhookLogs] = React.useState<WebhookLog[]>([]);
   const [health, setHealth] = React.useState<MetaHealth | null>(null);
   const [selectedAccountId, setSelectedAccountId] = React.useState("");
@@ -249,15 +304,17 @@ export default function SettingsPage() {
     setError(null);
 
     try {
-      const [nextAccounts, config, status, logs] = await Promise.all([
+      const [nextAccounts, config, status, web, logs] = await Promise.all([
         apiClient.get<WhatsAppAccount[]>("/whatsapp/accounts", tenantOptions),
         apiClient.get<MetaConfig>("/meta/embedded-signup/config", tenantOptions),
         apiClient.get<MetaStatus>("/meta/embedded-signup/status", tenantOptions),
+        apiClient.get<WhatsAppWebStatus>("/whatsapp/web/status", tenantOptions),
         apiClient.get<WebhookLog[]>("/whatsapp/webhook-logs", tenantOptions)
       ]);
       setAccounts(nextAccounts);
       setMetaConfig(config);
       setMetaStatus(status);
+      setWebStatus(web);
       setWebhookLogs(logs);
       setSelectedAccountId((current) => current || status.account?.id || nextAccounts[0]?.id || "");
     } catch (loadError) {
@@ -270,6 +327,82 @@ export default function SettingsPage() {
   React.useEffect(() => {
     void loadSettings();
   }, [activeTenant?.id]);
+
+  React.useEffect(() => {
+    if (!activeTenant?.id) return undefined;
+
+    const socket: Socket = io(API_ORIGIN, {
+      withCredentials: true,
+      transports: ["websocket", "polling"]
+    });
+
+    function applyStatus(payload: WhatsAppWebSocketPayload) {
+      setWebStatus((current) => {
+        if (!current?.session || current.session.id !== payload.connectionId) {
+          void loadSettings();
+          return current;
+        }
+
+        return {
+          ...current,
+          session: {
+            ...current.session,
+            ...(payload.status ? { status: payload.status } : {}),
+            ...(payload.displayNumber !== undefined ? { displayNumber: payload.displayNumber } : {}),
+            ...(payload.displayName !== undefined ? { displayName: payload.displayName } : {}),
+            ...(payload.failureReason !== undefined ? { failureReason: payload.failureReason } : {})
+          }
+        };
+      });
+
+      if (payload.status === "CONNECTED") {
+        setWebQr(null);
+        setWebQrExpiresAt(null);
+        setNotice("WhatsApp Web experimental session connected.");
+        void loadSettings();
+      }
+
+      if (payload.status === "SESSION_EXPIRED" || payload.status === "AUTH_FAILURE" || payload.status === "ERROR") {
+        setError(payload.failureReason ?? payload.message ?? "WhatsApp Web session needs attention.");
+      }
+    }
+
+    socket.on("whatsapp.web.qr", (payload: WhatsAppWebSocketPayload) => {
+      setWebQr(payload.qr ?? null);
+      setWebQrExpiresAt(payload.expiresAt ?? null);
+      setNotice("Scan the real WhatsApp Linked Devices QR code.");
+      setError(null);
+      void loadSettings();
+    });
+    socket.on("whatsapp.web.status", applyStatus);
+    socket.on("whatsapp.web.connected", applyStatus);
+    socket.on("whatsapp.web.disconnected", applyStatus);
+    socket.on("whatsapp.web.error", applyStatus);
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [activeTenant?.id]);
+
+  React.useEffect(() => {
+    if (!webQrExpiresAt) {
+      setWebQrSecondsRemaining(0);
+      return undefined;
+    }
+    const expiresAt = webQrExpiresAt;
+
+    function updateCountdown() {
+      const remaining = Math.max(0, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setWebQrSecondsRemaining(remaining);
+      if (remaining === 0) {
+        setWebQr(null);
+      }
+    }
+
+    updateCountdown();
+    const interval = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(interval);
+  }, [webQrExpiresAt]);
 
   async function connectAutomatically() {
     if (!activeTenant?.id) {
@@ -406,6 +539,74 @@ export default function SettingsPage() {
     }
   }
 
+  async function connectExperimentalWeb() {
+    if (!activeTenant?.id) {
+      setError("Tenant/business not selected. Please select or create a business first.");
+      return;
+    }
+    if (!webAcknowledged) {
+      setError("Please acknowledge the experimental WhatsApp Web notice before connecting.");
+      return;
+    }
+
+    setSubmitting(true);
+    setError(null);
+    setNotice("Creating a real WhatsApp Linked Devices QR session...");
+    setWebQr(null);
+    setWebQrExpiresAt(null);
+
+    try {
+      const result = await apiClient.post<WhatsAppWebStatus>(
+        "/whatsapp/web/connect",
+        { acknowledgementAccepted: true },
+        tenantOptions
+      );
+      setWebStatus(result);
+      setNotice("Session initializing. The QR code will appear here when WhatsApp returns it.");
+    } catch (connectError) {
+      setError(errorMessage(connectError));
+      setNotice(null);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function reconnectExperimentalWeb() {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await apiClient.post<WhatsAppWebStatus>("/whatsapp/web/reconnect", {}, tenantOptions);
+      setWebStatus(result);
+      setNotice("Reconnecting WhatsApp Web experimental session...");
+    } catch (reconnectError) {
+      setError(errorMessage(reconnectError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function disconnectExperimentalWeb(deleteSession = false) {
+    setSubmitting(true);
+    setError(null);
+    try {
+      const endpoint = deleteSession ? "/whatsapp/web/logout" : "/whatsapp/web/disconnect";
+      const result = await apiClient.post<WhatsAppWebStatus>(
+        endpoint,
+        deleteSession ? {} : { deleteSession: false },
+        tenantOptions
+      );
+      setWebStatus(result);
+      setWebQr(null);
+      setWebQrExpiresAt(null);
+      setNotice(deleteSession ? "WhatsApp Web session logged out and deleted." : "WhatsApp Web session disconnected.");
+      await loadSettings();
+    } catch (disconnectError) {
+      setError(errorMessage(disconnectError));
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   async function saveAccount() {
     if (!activeTenant?.id) {
       setError("Tenant/business not selected. Please select or create a business first.");
@@ -525,12 +726,13 @@ export default function SettingsPage() {
       <div className="inline-flex rounded-lg border bg-card p-1">
         {[
           ["automatic", "Connect Automatically"],
+          ["experimental", "WhatsApp Web - Experimental"],
           ["manual", "Manual Setup"]
         ].map(([key, label]) => (
           <button
             key={key}
             type="button"
-            onClick={() => setActiveTab(key as "automatic" | "manual")}
+            onClick={() => setActiveTab(key as "automatic" | "experimental" | "manual")}
             className={`rounded-md px-4 py-2 text-sm font-medium transition ${activeTab === key ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
           >
             {label}
@@ -599,6 +801,144 @@ export default function SettingsPage() {
           </Card>
 
           <ChecklistCard health={health} metaStatus={metaStatus} />
+        </motion.div>
+      ) : activeTab === "experimental" ? (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[1fr_420px]">
+          <Card>
+            <CardHeader>
+              <CardTitle>WhatsApp Web - Experimental / Unofficial</CardTitle>
+              <CardDescription>
+                Local proof-of-concept Linked Devices connection for one-to-one test messages through your own WhatsApp account.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-3 rounded-lg border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-900 dark:text-amber-200">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-semibold">Experimental local testing only</p>
+                  <p className="mt-1 text-amber-800 dark:text-amber-200/90">
+                    Use this only with your own WhatsApp account for development. It is limited to one-to-one incoming messages and does not replace the official Meta Cloud API path.
+                  </p>
+                </div>
+              </div>
+
+              <label className="flex gap-3 rounded-lg border bg-background p-4 text-sm">
+                <input
+                  type="checkbox"
+                  checked={webAcknowledged}
+                  onChange={(event) => setWebAcknowledged(event.target.checked)}
+                  className="mt-1 h-4 w-4"
+                />
+                <span>
+                  I understand this provider is experimental, unofficial, and only for my own local development test account.
+                </span>
+              </label>
+
+              <div className="rounded-lg border bg-background p-4">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="font-medium">Linked Devices QR session</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {webStatus?.enabled
+                        ? "Ready to create a real QR from the backend session manager."
+                        : "Disabled. Set ENABLE_EXPERIMENTAL_WHATSAPP_WEB=true on the API."}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    onClick={connectExperimentalWeb}
+                    disabled={submitting || loading || !webStatus?.enabled || !webAcknowledged}
+                  >
+                    <QrCode className="h-4 w-4" aria-hidden="true" />
+                    Connect WhatsApp
+                  </Button>
+                </div>
+              </div>
+
+              {webQr ? (
+                <div className="rounded-lg border bg-background p-5">
+                  <div className="grid gap-5 md:grid-cols-[260px_1fr]">
+                    <div className="flex items-center justify-center rounded-lg border bg-white p-4">
+                      <QRCodeSVG value={webQr} size={220} level="M" includeMargin />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <QrCode className="h-5 w-5" aria-hidden="true" />
+                        <p className="font-semibold">Scan this real QR code</p>
+                      </div>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        QR expires in {webQrSecondsRemaining || webStatus?.qrTtlSeconds || 60} seconds.
+                      </p>
+                      <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
+                        <li>Open WhatsApp Business.</li>
+                        <li>Open Menu or Settings.</li>
+                        <li>Open Linked Devices.</li>
+                        <li>Select Link a Device.</li>
+                        <li>Scan this QR code.</li>
+                      </ol>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+
+              {webStatus?.session ? (
+                <div className="rounded-lg border bg-background p-4">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="font-semibold">{webStatus.session.displayName ?? "WhatsApp Web session"}</p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Phone {webStatus.session.displayNumber ?? "pending"} / Session {webStatus.session.id}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Last heartbeat: {webStatus.session.lastHeartbeatAt ? new Date(webStatus.session.lastHeartbeatAt).toLocaleString() : "Not yet"}
+                      </p>
+                      {webStatus.session.failureReason ? (
+                        <p className="mt-1 text-sm text-rose-600 dark:text-rose-300">{webStatus.session.failureReason}</p>
+                      ) : null}
+                    </div>
+                    <StatusBadge tone={webStatus.session.status === "CONNECTED" ? "success" : "warning"}>{webStatus.session.status}</StatusBadge>
+                  </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Button type="button" variant="outline" onClick={reconnectExperimentalWeb} disabled={submitting}>
+                      <RefreshCw className="h-4 w-4" aria-hidden="true" />
+                      Reconnect
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => void disconnectExperimentalWeb(false)} disabled={submitting}>
+                      <Unlink className="h-4 w-4" aria-hidden="true" />
+                      Disconnect
+                    </Button>
+                    <Button type="button" variant="outline" onClick={() => void disconnectExperimentalWeb(true)} disabled={submitting}>
+                      <LogOut className="h-4 w-4" aria-hidden="true" />
+                      Logout and Delete Session
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-lg border bg-background p-4 text-sm text-muted-foreground">No experimental WhatsApp Web session yet.</div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Experimental scope</CardTitle>
+              <CardDescription>Controls for the local proof-of-concept provider.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {[
+                "One-to-one incoming text messages only",
+                "Groups, broadcasts, channels, and status messages are ignored",
+                "Outgoing AI replies are sent through the queue",
+                "Outgoing bot messages are ignored by the AI loop",
+                "Session state is encrypted at rest"
+              ].map((item) => (
+                <div key={item} className="flex gap-3 rounded-lg border bg-background p-3 text-sm">
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
+                  <span>{item}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
         </motion.div>
       ) : (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="grid gap-4 xl:grid-cols-[1fr_420px]">

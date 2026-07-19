@@ -4,6 +4,18 @@ import { logger } from "../logger/logger.js";
 
 const redisUrl = new URL(env.REDIS_URL);
 type QueueLike = Pick<Queue, "add" | "close" | "on" | "name">;
+export type WhatsAppOutboundQueueJob = {
+  outboundJobId: string;
+  tenantId: string;
+  connectionId: string;
+  providerType: "META_CLOUD" | "WHATSAPP_WEB_EXPERIMENTAL";
+  conversationId: string;
+  incomingMessageId: string | null;
+  internalMessageId: string;
+  recipient: string;
+  text: string;
+  origin: "AI" | "AGENT" | "SYSTEM";
+};
 const isTestRuntime =
   env.NODE_ENV === "test" ||
   process.env.VITEST === "true" ||
@@ -48,7 +60,9 @@ export const usageQueue = createQueue("usage", 3000, 100, 500);
 
 export const campaignQueue = createQueue("campaign", 5000, 250, 1000);
 
-for (const queue of [foundationQueue, knowledgeQueue, usageQueue, campaignQueue]) {
+export const whatsappOutboundQueue = createQueue("whatsapp-outbound", 2000, 500, 1000);
+
+for (const queue of [foundationQueue, knowledgeQueue, usageQueue, campaignQueue, whatsappOutboundQueue]) {
   queue.on("error", (error) => {
     logger.error(
       {
@@ -62,5 +76,7 @@ for (const queue of [foundationQueue, knowledgeQueue, usageQueue, campaignQueue]
 }
 
 export async function closeQueues() {
-  await Promise.all([foundationQueue, knowledgeQueue, usageQueue, campaignQueue].map((queue) => queue.close()));
+  await Promise.all(
+    [foundationQueue, knowledgeQueue, usageQueue, campaignQueue, whatsappOutboundQueue].map((queue) => queue.close())
+  );
 }

@@ -1,16 +1,28 @@
 import { prisma } from "@novachat/database";
+import { env } from "./config/env.js";
 import { logger } from "./infrastructure/logger/logger.js";
 import { startCampaignWorker } from "./infrastructure/queue/campaign-worker.js";
 import { requeuePendingKnowledgeDocuments, startKnowledgeWorker } from "./infrastructure/queue/knowledge-worker.js";
 import { closeQueues } from "./infrastructure/queue/queue.js";
 import { scheduleUsageJobs, startUsageWorker } from "./infrastructure/queue/usage-worker.js";
+import { startWhatsAppOutboundWorker } from "./infrastructure/queue/whatsapp-outbound-worker.js";
 import { waitForDatabase, waitForRedis } from "./infrastructure/startup/startup-checks.js";
+import { whatsAppWebSessionManager } from "./infrastructure/whatsapp-web/whatsapp-web-session-manager.js";
 
 async function bootstrapWorker() {
   await waitForDatabase();
   await waitForRedis();
 
-  const workers = [startKnowledgeWorker(), startUsageWorker(), startCampaignWorker()];
+  const workers: Array<{ close: () => Promise<void> }> = [
+    startKnowledgeWorker(),
+    startUsageWorker(),
+    startCampaignWorker(),
+  ];
+  if (env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB) {
+    logger.info("WhatsApp Web outbound queue is owned by the API process while experimental sessions are enabled");
+  } else {
+    workers.push(startWhatsAppOutboundWorker());
+  }
   let isShuttingDown = false;
 
   async function shutdown(signal: NodeJS.Signals) {
@@ -21,6 +33,7 @@ async function bootstrapWorker() {
     isShuttingDown = true;
     logger.info({ signal }, "NovaChat worker shutting down");
     await Promise.all(workers.map((worker) => worker.close()));
+    await whatsAppWebSessionManager.shutdown();
     await closeQueues();
     await prisma.$disconnect();
     logger.info("NovaChat worker shutdown complete");
@@ -42,6 +55,9 @@ async function bootstrapWorker() {
 
   await scheduleUsageJobs();
   await requeuePendingKnowledgeDocuments();
+  if (!env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB) {
+    await whatsAppWebSessionManager.restoreEligibleSessions();
+  }
 
   logger.info("NovaChat worker started");
   logger.info("Usage reset jobs scheduled: monthly usage reset and daily AI cost reset");

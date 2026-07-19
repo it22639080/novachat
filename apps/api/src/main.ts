@@ -2,8 +2,10 @@ import { prisma } from "@novachat/database";
 import { createApp } from "./app.js";
 import { env } from "./config/env.js";
 import { logger } from "./infrastructure/logger/logger.js";
+import { startWhatsAppOutboundWorker } from "./infrastructure/queue/whatsapp-outbound-worker.js";
 import { createRealtimeServer } from "./infrastructure/realtime/realtime.js";
 import { waitForDatabase, waitForRedis } from "./infrastructure/startup/startup-checks.js";
+import { whatsAppWebSessionManager } from "./infrastructure/whatsapp-web/whatsapp-web-session-manager.js";
 
 async function bootstrap() {
   await waitForDatabase();
@@ -11,6 +13,7 @@ async function bootstrap() {
 
   const app = createApp();
   const httpServer = createRealtimeServer(app);
+  const workers = env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB ? [startWhatsAppOutboundWorker()] : [];
   let isShuttingDown = false;
 
   async function shutdown(signal: NodeJS.Signals) {
@@ -31,6 +34,8 @@ async function bootstrap() {
         resolve();
       });
     });
+    await Promise.all(workers.map((worker) => worker.close()));
+    await whatsAppWebSessionManager.shutdown();
     await prisma.$disconnect();
     logger.info("NovaChat API shutdown complete");
   }
@@ -79,7 +84,21 @@ async function bootstrap() {
       },
       "Meta Embedded Signup configuration loaded"
     );
+
+    logger.info(
+      {
+        experimentalWhatsAppWebEnabled: env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB,
+        maxSessionsPerInstance: env.WHATSAPP_WEB_MAX_SESSIONS_PER_INSTANCE,
+        qrTtlSeconds: env.WHATSAPP_WEB_QR_TTL_SECONDS,
+        hasSessionEncryptionKey: Boolean(env.WHATSAPP_SESSION_ENCRYPTION_KEY)
+      },
+      "WhatsApp Web experimental configuration loaded"
+    );
   });
+
+  if (env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB) {
+    await whatsAppWebSessionManager.restoreEligibleSessions();
+  }
 }
 
 void bootstrap().catch((error) => {

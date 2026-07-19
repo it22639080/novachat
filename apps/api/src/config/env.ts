@@ -46,6 +46,15 @@ const envSchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.string().min(32).optional()
   ),
+  WHATSAPP_SESSION_ENCRYPTION_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(32).optional()
+  ),
+  ENABLE_EXPERIMENTAL_WHATSAPP_WEB: booleanEnv.default(false),
+  WHATSAPP_WEB_MAX_SESSIONS_PER_INSTANCE: z.coerce.number().int().min(1).max(50).default(5),
+  WHATSAPP_WEB_MAX_RECONNECT_ATTEMPTS: z.coerce.number().int().min(0).max(20).default(5),
+  WHATSAPP_WEB_QR_TTL_SECONDS: z.coerce.number().int().min(15).max(300).default(60),
+  WHATSAPP_WEB_MESSAGE_RATE_LIMIT_PER_MINUTE: z.coerce.number().int().min(1).max(60).default(10),
   META_APP_ID: optionalNonEmptyString,
   META_APP_SECRET: optionalNonEmptyString,
   META_CONFIG_ID: optionalNonEmptyString,
@@ -62,6 +71,14 @@ const envSchema = z.object({
   OPENAI_BASE_URL: z.string().url().default("https://api.openai.com/v1"),
   OPENAI_EMBEDDING_MODEL: z.string().min(2).default("text-embedding-3-small"),
   GEMINI_API_KEY: optionalNonEmptyString
+}).superRefine((value, context) => {
+  if (value.ENABLE_EXPERIMENTAL_WHATSAPP_WEB && !value.WHATSAPP_SESSION_ENCRYPTION_KEY) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["WHATSAPP_SESSION_ENCRYPTION_KEY"],
+      message: "WHATSAPP_SESSION_ENCRYPTION_KEY is required when ENABLE_EXPERIMENTAL_WHATSAPP_WEB=true"
+    });
+  }
 });
 
 export const env = envSchema.parse(process.env);

@@ -20,6 +20,7 @@ import { SimulatorController } from "../controllers/simulator-controller.js";
 import { TeamController } from "../controllers/team-controller.js";
 import { UsageController } from "../controllers/usage-controller.js";
 import { WhatsAppController } from "../controllers/whatsapp-controller.js";
+import { WhatsAppWebController } from "../controllers/whatsapp-web-controller.js";
 import { authenticate } from "../middleware/authenticate.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { requireRole } from "../middleware/require-role.js";
@@ -37,6 +38,7 @@ const auditLogController = new AuditLogController();
 const teamController = new TeamController();
 const simulatorController = new SimulatorController();
 const whatsAppController = new WhatsAppController();
+const whatsAppWebController = new WhatsAppWebController();
 const inboxController = new InboxController();
 const crmController = new CrmController();
 const commerceController = new CommerceController();
@@ -213,6 +215,41 @@ apiRouter.post(
   authenticate,
   tenantContext,
   asyncHandler(whatsAppController.sendList.bind(whatsAppController))
+);
+
+apiRouter.get(
+  "/whatsapp/web/status",
+  authenticate,
+  tenantContext,
+  asyncHandler(whatsAppWebController.status.bind(whatsAppWebController))
+);
+apiRouter.post(
+  "/whatsapp/web/connect",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  asyncHandler(whatsAppWebController.connect.bind(whatsAppWebController))
+);
+apiRouter.post(
+  "/whatsapp/web/reconnect",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  asyncHandler(whatsAppWebController.reconnect.bind(whatsAppWebController))
+);
+apiRouter.post(
+  "/whatsapp/web/disconnect",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  asyncHandler(whatsAppWebController.disconnect.bind(whatsAppWebController))
+);
+apiRouter.post(
+  "/whatsapp/web/logout",
+  authenticate,
+  tenantContext,
+  requireRole(["OWNER", "ADMIN"]),
+  asyncHandler(whatsAppWebController.logout.bind(whatsAppWebController))
 );
 
 apiRouter.get(

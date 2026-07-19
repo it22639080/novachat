@@ -9,7 +9,7 @@ import type {
   PlatformRole
 } from "@novachat/shared-types";
 import { MessageProcessingService } from "./message-processing-service.js";
-import { WhatsAppService } from "./whatsapp-service.js";
+import { whatsAppOutboundService } from "./whatsapp-outbound-service.js";
 import { forbidden, notFound } from "../../shared/errors/app-error.js";
 import { createPagination } from "../../shared/pagination/create-pagination.js";
 import { publishTenantEvent } from "../../infrastructure/realtime/realtime.js";
@@ -20,7 +20,6 @@ type Actor = {
 };
 
 const messageProcessingService = new MessageProcessingService();
-const whatsAppService = new WhatsAppService();
 
 function serializeDate(value: Date | null) {
   return value ? value.toISOString() : null;
@@ -273,11 +272,17 @@ export class InboxService {
         : "whatsapp";
 
     if (source === "whatsapp" && conversation.whatsappAccount?.id) {
-      return whatsAppService.sendText(tenantId, {
-        accountId: conversation.whatsappAccount.id,
-        to: conversation.customer.phone,
-        text: input.text
+      const queued = await whatsAppOutboundService.enqueueConversationText({
+        tenantId,
+        conversationId,
+        text: input.text,
+        origin: "AGENT"
       });
+
+      return {
+        conversationId: queued.conversationId,
+        message: mapMessage(queued.message)
+      };
     }
 
     const result = await messageProcessingService.processOutgoing({
