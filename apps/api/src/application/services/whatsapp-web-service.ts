@@ -51,11 +51,34 @@ function serializeSession(
 
 export class WhatsAppWebService {
   async status(tenantId: string) {
-    const session = await prisma.whatsAppWebSession.findFirst({
-      where: { tenantId, deletedAt: null },
-      include: { whatsappAccount: true },
-      orderBy: { createdAt: "desc" }
-    });
+    if (!env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB) {
+      return {
+        enabled: false,
+        qrTtlSeconds: env.WHATSAPP_WEB_QR_TTL_SECONDS,
+        session: null
+      };
+    }
+
+    let session: Prisma.WhatsAppWebSessionGetPayload<{
+      include: { whatsappAccount: true };
+    }> | null;
+
+    try {
+      session = await prisma.whatsAppWebSession.findFirst({
+        where: { tenantId, deletedAt: null },
+        include: { whatsappAccount: true },
+        orderBy: { createdAt: "desc" }
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
+        throw serviceUnavailable(
+          "WHATSAPP_WEB_DATABASE_NOT_MIGRATED",
+          "WhatsApp Web database tables are missing. Run the latest Prisma migration before enabling this provider."
+        );
+      }
+
+      throw error;
+    }
 
     return {
       enabled: env.ENABLE_EXPERIMENTAL_WHATSAPP_WEB,
