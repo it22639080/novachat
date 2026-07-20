@@ -63,6 +63,15 @@ function recipientJid(recipient: string) {
   return `${normalizePhone(recipient)}@s.whatsapp.net`;
 }
 
+function maskRecipient(value: string) {
+  const normalized = normalizePhone(value);
+  if (normalized.length <= 4) {
+    return "****";
+  }
+
+  return `${"*".repeat(Math.max(normalized.length - 4, 0))}${normalized.slice(-4)}`;
+}
+
 function extractText(message: WAMessage) {
   const content = extractMessageContent(message.message);
   if (!content) return null;
@@ -291,7 +300,31 @@ export class WhatsAppWebSessionManager {
       throw serviceUnavailable("WHATSAPP_WEB_NOT_CONNECTED", "WhatsApp Web session is not connected.");
     }
 
-    const response = await managed.socket.sendMessage(recipientJid(input.recipient), { text: input.text });
+    const jid = recipientJid(input.recipient);
+
+    logger.info(
+      {
+        tenantId: input.tenantId,
+        connectionId: input.connectionId,
+        internalMessageId: input.internalMessageId,
+        recipient: maskRecipient(input.recipient),
+        textLength: input.text.length
+      },
+      "WhatsApp Web outbound send started"
+    );
+
+    const response = await managed.socket.sendMessage(jid, { text: input.text });
+
+    logger.info(
+      {
+        tenantId: input.tenantId,
+        connectionId: input.connectionId,
+        internalMessageId: input.internalMessageId,
+        providerMessageId: response?.key.id ?? null,
+        recipient: maskRecipient(input.recipient)
+      },
+      "WhatsApp Web outbound send completed"
+    );
 
     return {
       providerMessageId: response?.key.id ?? null,

@@ -44,6 +44,10 @@ type InboxMessage = {
   status: string;
   text: string | null;
   mediaUrl: string | null;
+  metadata: {
+    failureReason?: string;
+    providerMessageId?: string | null;
+  } | null;
   createdAt: string;
 };
 
@@ -162,6 +166,28 @@ function statusVariant(status: InboxConversation["status"]) {
   }
 
   return "neutral";
+}
+
+function outboundDeliveryLabel(message: InboxMessage) {
+  const status = message.status.toUpperCase();
+
+  if (status === "FAILED") return "Failed";
+  if (status === "QUEUED") return "Queued";
+  if (status === "SENDING") return "Sending";
+  if (status === "SENT") return "Sent";
+  if (status === "DELIVERED") return "Delivered";
+  if (status === "READ") return "Read";
+
+  return message.status;
+}
+
+function outboundDeliveryClassName(message: InboxMessage) {
+  const status = message.status.toUpperCase();
+
+  if (status === "FAILED") return "text-red-400";
+  if (status === "QUEUED" || status === "SENDING") return "text-yellow-300";
+
+  return "opacity-70";
 }
 
 export default function InboxPage() {
@@ -687,8 +713,21 @@ export default function InboxPage() {
                             </a>
                           ) : null}
                           {outbound ? (
-                            <div className="mt-1 flex justify-end">
-                              <CheckCheck className="h-3.5 w-3.5 opacity-70" />
+                            <div
+                              className={cn(
+                                "mt-1 flex flex-col items-end gap-1 text-[11px]",
+                                outboundDeliveryClassName(message)
+                              )}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                {outboundDeliveryLabel(message)}
+                                <CheckCheck className="h-3.5 w-3.5" />
+                              </span>
+                              {message.status.toUpperCase() === "FAILED" && message.metadata?.failureReason ? (
+                                <span className="max-w-64 text-right">
+                                  {message.metadata.failureReason}
+                                </span>
+                              ) : null}
                             </div>
                           ) : null}
                         </div>

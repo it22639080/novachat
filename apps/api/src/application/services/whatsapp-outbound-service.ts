@@ -1,6 +1,7 @@
 import { Prisma, prisma } from "@novachat/database";
 import { MessageProcessingService } from "./message-processing-service.js";
 import { whatsappOutboundQueue, type WhatsAppOutboundQueueJob } from "../../infrastructure/queue/queue.js";
+import { logger } from "../../infrastructure/logger/logger.js";
 import { notFound } from "../../shared/errors/app-error.js";
 
 type OutboundOrigin = "AI" | "AGENT" | "SYSTEM";
@@ -120,6 +121,21 @@ export class WhatsAppOutboundService {
       { jobId: outboundJob.id, attempts: 3 }
     );
 
+    logger.info(
+      {
+        tenantId: input.tenantId,
+        conversationId: input.conversationId,
+        providerType,
+        connectionId,
+        outboundJobId: outboundJob.id,
+        internalMessageId: result.message.id,
+        origin: input.origin,
+        recipient: maskRecipient(normalizePhone(conversation.customer.phone)),
+        textLength: input.text.length
+      },
+      "WhatsApp outbound message queued"
+    );
+
     return {
       queued: true,
       providerType,
@@ -192,3 +208,11 @@ export class WhatsAppOutboundService {
 }
 
 export const whatsAppOutboundService = new WhatsAppOutboundService();
+
+function maskRecipient(value: string) {
+  if (value.length <= 4) {
+    return "****";
+  }
+
+  return `${"*".repeat(Math.max(value.length - 4, 0))}${value.slice(-4)}`;
+}
