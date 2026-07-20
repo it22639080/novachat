@@ -60,6 +60,10 @@ function normalizePhone(value: string) {
 }
 
 function recipientJid(recipient: string) {
+  if (recipient.includes("@")) {
+    return recipient;
+  }
+
   return `${normalizePhone(recipient)}@s.whatsapp.net`;
 }
 

@@ -18,6 +18,14 @@ function providerFromAccount(account: { onboardingMethod: string }) {
     : "META_CLOUD";
 }
 
+function resolveRecipient(input: { providerType: string; customer: { phone: string; whatsappWaId: string | null } }) {
+  if (input.providerType === "WHATSAPP_WEB_EXPERIMENTAL" && input.customer.whatsappWaId) {
+    return input.customer.whatsappWaId;
+  }
+
+  return normalizePhone(input.customer.phone);
+}
+
 export class WhatsAppOutboundService {
   async enqueueConversationText(input: {
     tenantId: string;
@@ -74,6 +82,14 @@ export class WhatsAppOutboundService {
       throw notFound("Active WhatsApp provider connection not found");
     }
 
+    const recipient = resolveRecipient({
+      providerType,
+      customer: {
+        phone: conversation.customer.phone,
+        whatsappWaId: conversation.customer.whatsappWaId
+      }
+    });
+
     const result = await messageProcessingService.processOutgoing({
       tenantId: input.tenantId,
       conversationId: input.conversationId,
@@ -97,7 +113,7 @@ export class WhatsAppOutboundService {
         conversationId: input.conversationId,
         incomingMessageId: input.incomingMessageId ?? null,
         internalMessageId: result.message.id,
-        recipient: normalizePhone(conversation.customer.phone),
+        recipient,
         text: input.text,
         origin: input.origin,
         status: "QUEUED"
@@ -114,7 +130,7 @@ export class WhatsAppOutboundService {
         conversationId: input.conversationId,
         incomingMessageId: input.incomingMessageId ?? null,
         internalMessageId: result.message.id,
-        recipient: normalizePhone(conversation.customer.phone),
+        recipient,
         text: input.text,
         origin: input.origin
       } satisfies WhatsAppOutboundQueueJob,
@@ -130,7 +146,7 @@ export class WhatsAppOutboundService {
         outboundJobId: outboundJob.id,
         internalMessageId: result.message.id,
         origin: input.origin,
-        recipient: maskRecipient(normalizePhone(conversation.customer.phone)),
+        recipient: maskRecipient(recipient),
         textLength: input.text.length
       },
       "WhatsApp outbound message queued"
