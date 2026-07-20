@@ -55,6 +55,10 @@ function loadEnvFile(path: string, options: LoadEnvOptions = {}): void {
 }
 
 export function loadDatabaseEnv(): void {
+  const isRailwayRuntime = Boolean(
+    process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_PROJECT_ID || process.env.RAILWAY_SERVICE_ID
+  );
+
   for (const envFile of [
     resolve(workspaceRoot, ".env.example"),
     resolve(databasePackageRoot, ".env.example"),
@@ -68,6 +72,6 @@ export function loadDatabaseEnv(): void {
     resolve(workspaceRoot, ".env.local"),
     resolve(databasePackageRoot, ".env.local"),
   ]) {
-    loadEnvFile(envFile, { override: true });
+    loadEnvFile(envFile, { override: !isRailwayRuntime });
   }
 }

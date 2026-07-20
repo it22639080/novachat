@@ -302,15 +302,29 @@ export class WhatsAppWebSessionManager {
       return;
     }
 
-    const sessions = await prisma.whatsAppWebSession.findMany({
-      where: {
-        deletedAt: null,
-        encryptedSessionState: { not: null },
-        explicitDisconnect: false,
-        status: { in: ["CONNECTED", "RECONNECTING", "ERROR", "DISCONNECTED"] }
-      },
-      take: env.WHATSAPP_WEB_MAX_SESSIONS_PER_INSTANCE
-    });
+    let sessions: Array<{ id: string; tenantId: string }>;
+
+    try {
+      sessions = await prisma.whatsAppWebSession.findMany({
+        where: {
+          deletedAt: null,
+          encryptedSessionState: { not: null },
+          explicitDisconnect: false,
+          status: { in: ["CONNECTED", "RECONNECTING", "ERROR", "DISCONNECTED"] }
+        },
+        take: env.WHATSAPP_WEB_MAX_SESSIONS_PER_INSTANCE
+      });
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2021") {
+        logger.warn(
+          { table: error.meta?.table },
+          "WhatsApp Web session restoration skipped because database migration is not applied"
+        );
+        return;
+      }
+
+      throw error;
+    }
 
     for (const session of sessions) {
       await this.connect({ tenantId: session.tenantId, connectionId: session.id }).catch((error) => {
