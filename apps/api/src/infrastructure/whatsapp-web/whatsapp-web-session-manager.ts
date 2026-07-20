@@ -3,6 +3,7 @@ import { Prisma, prisma } from "@novachat/database";
 import makeWASocket, {
   Browsers,
   DisconnectReason,
+  extractMessageContent,
   fetchLatestBaileysVersion,
   jidNormalizedUser,
   type ConnectionState,
@@ -63,7 +64,7 @@ function recipientJid(recipient: string) {
 }
 
 function extractText(message: WAMessage) {
-  const content = message.message;
+  const content = extractMessageContent(message.message);
   if (!content) return null;
 
   return (
@@ -76,18 +77,22 @@ function extractText(message: WAMessage) {
 }
 
 function shouldIgnoreMessage(message: WAMessage) {
+  return Boolean(getMessageIgnoreReason(message));
+}
+
+function getMessageIgnoreReason(message: WAMessage) {
   const remoteJid = message.key.remoteJid ?? "";
 
-  return (
-    Boolean(message.key.fromMe) ||
-    !remoteJid ||
-    remoteJid === "status@broadcast" ||
-    remoteJid.endsWith("@g.us") ||
-    remoteJid.endsWith("@newsletter") ||
-    remoteJid.includes("broadcast") ||
-    Boolean(message.messageStubType) ||
-    !message.message
-  );
+  if (message.key.fromMe) return "from_self";
+  if (!remoteJid) return "missing_remote_jid";
+  if (remoteJid === "status@broadcast") return "status_broadcast";
+  if (remoteJid.endsWith("@g.us")) return "group_message";
+  if (remoteJid.endsWith("@newsletter")) return "newsletter_message";
+  if (remoteJid.includes("broadcast")) return "broadcast_message";
+  if (message.messageStubType) return "system_message";
+  if (!message.message) return "empty_message";
+
+  return null;
 }
 
 function statusFromDisconnectCode(code: number | undefined) {
@@ -432,8 +437,31 @@ export class WhatsAppWebSessionManager {
   }
 
   private async handleIncomingMessage(managed: ManagedSession, message: WAMessage) {
+    logger.info(
+      {
+        tenantId: managed.tenantId,
+        connectionId: managed.connectionId,
+        providerMessageId: message.key.id ?? null,
+        remoteJid: message.key.remoteJid ?? null,
+        fromSelf: Boolean(message.key.fromMe)
+      },
+      "WhatsApp Web message event received"
+    );
+
     const normalized = this.normalizeIncomingMessage(message);
-    if (!normalized) return;
+    if (!normalized) {
+      logger.info(
+        {
+          tenantId: managed.tenantId,
+          connectionId: managed.connectionId,
+          providerMessageId: message.key.id ?? null,
+          remoteJid: message.key.remoteJid ?? null,
+          ignoreReason: getMessageIgnoreReason(message) ?? "unsupported_or_empty_text"
+        },
+        "WhatsApp Web message event ignored"
+      );
+      return;
+    }
 
     const lockAcquired = await redisConnection.set(
       messageLockKey(managed.connectionId, normalized.externalMessageId),
@@ -452,7 +480,18 @@ export class WhatsAppWebSessionManager {
       },
       select: { id: true }
     });
-    if (existing) return;
+    if (existing) {
+      logger.info(
+        {
+          tenantId: managed.tenantId,
+          connectionId: managed.connectionId,
+          providerMessageId: normalized.externalMessageId,
+          messageId: existing.id
+        },
+        "WhatsApp Web duplicate incoming message ignored"
+      );
+      return;
+    }
 
     const processed = await messageProcessingService.processIncoming({
       tenantId: managed.tenantId,
@@ -475,6 +514,17 @@ export class WhatsAppWebSessionManager {
       conversationId: processed.conversation.id,
       source: "whatsapp"
     });
+
+    logger.info(
+      {
+        tenantId: managed.tenantId,
+        connectionId: managed.connectionId,
+        providerMessageId: normalized.externalMessageId,
+        conversationId: processed.conversation.id,
+        messageId: processed.message.id
+      },
+      "WhatsApp Web incoming message stored"
+    );
   }
 
   private normalizeIncomingMessage(message: WAMessage): IncomingWebMessage | null {
