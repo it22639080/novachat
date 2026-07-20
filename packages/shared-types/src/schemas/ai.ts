@@ -4,10 +4,16 @@ import { paginationQuerySchema } from "./pagination.js";
 export const aiProviderSchema = z.enum(["OPENAI", "GEMINI"]);
 export const aiToneSchema = z.enum(["friendly", "professional", "concise", "warm", "playful"]);
 
-const stringListSchema = z
-  .array(z.string().trim().min(1).max(160))
-  .max(40)
-  .default([]);
+const createStringListSchema = (maxItemLength: number, maxItems = 40) =>
+  z
+    .array(z.string().trim().min(1).max(maxItemLength))
+    .max(maxItems)
+    .default([]);
+
+const compactStringListSchema = createStringListSchema(120);
+const servicesListSchema = createStringListSchema(500);
+const policiesListSchema = createStringListSchema(1000);
+const handoverKeywordListSchema = createStringListSchema(80);
 
 export const aiSettingsSchema = z.object({
   isEnabled: z.boolean().default(false),
@@ -15,19 +21,19 @@ export const aiSettingsSchema = z.object({
   modelName: z.string().trim().min(2).max(80).default("gpt-4o-mini"),
   temperature: z.coerce.number().min(0).max(1).default(0.2),
   businessName: z.string().trim().max(120).nullable().optional(),
-  businessDescription: z.string().trim().max(2000).nullable().optional(),
+  businessDescription: z.string().trim().max(6000).nullable().optional(),
   tone: aiToneSchema.default("friendly"),
-  supportedLanguages: stringListSchema.default(["English"]),
+  supportedLanguages: compactStringListSchema.default(["English"]),
   openingHours: z.record(z.unknown()).nullable().optional(),
-  services: stringListSchema,
-  policies: stringListSchema,
+  services: servicesListSchema,
+  policies: policiesListSchema,
   fallbackMessage: z
     .string()
     .trim()
     .min(1)
     .max(1000)
     .default("Thanks for your message. A team member will get back to you shortly."),
-  handoverKeywords: stringListSchema.default(["human", "agent", "support", "representative"])
+  handoverKeywords: handoverKeywordListSchema.default(["human", "agent", "support", "representative"])
 });
 
 export const updateAiSettingsSchema = aiSettingsSchema.partial();

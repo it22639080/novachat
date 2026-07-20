@@ -84,6 +84,8 @@ function nullableText(value: string | null) {
 }
 
 function cleanSettingsPayload(settings: AiSettings) {
+  const fallbackMessage = settings.fallbackMessage.trim() || defaultSettings.fallbackMessage;
+
   return {
     ...settings,
     businessName: nullableText(settings.businessName),
@@ -92,7 +94,7 @@ function cleanSettingsPayload(settings: AiSettings) {
     services: settings.services.map((item) => item.trim()).filter(Boolean),
     policies: settings.policies.map((item) => item.trim()).filter(Boolean),
     handoverKeywords: settings.handoverKeywords.map((item) => item.trim()).filter(Boolean),
-    fallbackMessage: settings.fallbackMessage.trim()
+    fallbackMessage
   };
 }
 
@@ -105,6 +107,20 @@ function withTenantId<TPayload extends object>(tenantId: string, payload: TPaylo
 
 function errorMessage(error: unknown, fallback: string) {
   if (error instanceof ApiClientError) {
+    const details = error.details;
+    if (details && typeof details === "object") {
+      const fieldErrors = (details as { fieldErrors?: Record<string, string[]> }).fieldErrors;
+      const messages = fieldErrors
+        ? Object.entries(fieldErrors)
+            .flatMap(([field, errors]) => errors.filter(Boolean).map((message) => `${field}: ${message}`))
+            .filter(Boolean)
+        : [];
+
+      if (messages.length) {
+        return `${fallback} ${messages.join(" ")}`;
+      }
+    }
+
     return `${fallback} ${error.message}`;
   }
 
