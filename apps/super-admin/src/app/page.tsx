@@ -197,6 +197,17 @@ function formatApiError(error: ApiFailure["error"]) {
   return [error.message, fieldMessages, formMessages].filter(Boolean).join(" ");
 }
 
+function buildTenantsPath(search: string) {
+  const params = new URLSearchParams({ page: "1", pageSize: "50" });
+  const trimmedSearch = search.trim();
+
+  if (trimmedSearch.length > 0) {
+    params.set("search", trimmedSearch);
+  }
+
+  return `/admin/tenants?${params.toString()}`;
+}
+
 function StatCard({ title, value, detail, icon: Icon }: { title: string; value: string; detail: string; icon: React.ComponentType<{ className?: string }> }) {
   return (
     <Card>
@@ -243,7 +254,7 @@ export default function SuperAdminHomePage() {
       const [overviewData, tenantData, userData, planData, subscriptionData, billingData, usageData, auditData, healthData, settingsData] =
         await Promise.all([
           apiRequest<Overview>("/admin/overview"),
-          apiRequest<Paginated<Tenant>>(`/admin/tenants?page=1&pageSize=50&search=${encodeURIComponent(search)}`),
+          apiRequest<Paginated<Tenant>>(buildTenantsPath(search)),
           apiRequest<Paginated<UserRow>>("/admin/users?page=1&pageSize=50"),
           apiRequest<PlanRow[]>("/admin/plans"),
           apiRequest<Paginated<SubscriptionRow>>("/admin/subscriptions?page=1&pageSize=50"),
