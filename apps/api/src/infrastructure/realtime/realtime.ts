@@ -30,6 +30,19 @@ const socketPayloadSchema = z.object({
 
 let io: Server | null = null;
 
+function socketCorsOrigin(value: string) {
+  const origins = value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  if (origins.length <= 1) {
+    return origins[0] ?? value;
+  }
+
+  return origins;
+}
+
 function parseCookie(header: string | undefined, name: string) {
   if (!header) {
     return undefined;
@@ -45,7 +58,7 @@ function parseCookie(header: string | undefined, name: string) {
 export function initRealtime(httpServer: HttpServer) {
   io = new Server(httpServer, {
     cors: {
-      origin: env.CORS_ORIGIN,
+      origin: socketCorsOrigin(env.CORS_ORIGIN),
       credentials: true
     }
   });
