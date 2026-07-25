@@ -1,5 +1,4 @@
 import {
-  Currency,
   MessageDirection,
   MessageSenderType,
   MessageStatus,
@@ -22,6 +21,7 @@ const usagePeriodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth
 const usagePeriodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
 
 const seedPasswordHash = "$2a$12$mwSJTCBE2jlTH/ewiOAFGO8EVwBHVx3lXavlxma.8yNX/28EVglPy";
+const seedCurrency = "USD" as const;
 
 function planLimits(input: {
   seats: number;
@@ -92,7 +92,7 @@ async function main() {
       priceMonthly: "29.00",
       monthlyPrice: "29.00",
       yearlyPrice: "290.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       aiReplyLimit: 1000,
       aiInputTokenLimit: 500000,
       aiOutputTokenLimit: 250000,
@@ -125,7 +125,7 @@ async function main() {
       priceMonthly: "29.00",
       monthlyPrice: "29.00",
       yearlyPrice: "290.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       aiReplyLimit: 1000,
       aiInputTokenLimit: 500000,
       aiOutputTokenLimit: 250000,
@@ -160,7 +160,7 @@ async function main() {
       priceMonthly: "99.00",
       monthlyPrice: "99.00",
       yearlyPrice: "990.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       aiReplyLimit: 10000,
       aiInputTokenLimit: 5000000,
       aiOutputTokenLimit: 2500000,
@@ -194,7 +194,7 @@ async function main() {
       priceMonthly: "99.00",
       monthlyPrice: "99.00",
       yearlyPrice: "990.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       aiReplyLimit: 10000,
       aiInputTokenLimit: 5000000,
       aiOutputTokenLimit: 2500000,
@@ -260,7 +260,7 @@ async function main() {
       priceMonthly: "99.00",
       monthlyPrice: "99.00",
       yearlyPrice: "990.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       aiReplyLimit: 10000,
       aiInputTokenLimit: 5000000,
       aiOutputTokenLimit: 2500000,
@@ -745,7 +745,7 @@ async function main() {
           sku,
           name,
           price,
-          currency: Currency.USD,
+          currency: seedCurrency,
           isActive: true
         }
       })
@@ -815,7 +815,7 @@ async function main() {
       status: "OPEN",
       source: "WhatsApp",
       value: "79.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       score: 70
     },
     create: {
@@ -827,7 +827,7 @@ async function main() {
       status: "OPEN",
       source: "WhatsApp",
       value: "79.00",
-      currency: Currency.USD,
+      currency: seedCurrency,
       score: 70
     }
   });

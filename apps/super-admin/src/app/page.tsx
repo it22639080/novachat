@@ -25,7 +25,16 @@ import { Badge, Button, Card, CardContent, CardDescription, CardHeader, CardTitl
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000/api/v1";
 
 type ApiSuccess<T> = { success: true; data: T };
-type ApiFailure = { success: false; error: { message: string } };
+type ApiFailure = {
+  success: false;
+  error: {
+    message: string;
+    details?: {
+      fieldErrors?: Record<string, string[]>;
+      formErrors?: string[];
+    };
+  };
+};
 type Paginated<T> = { items: T[]; pagination: { total: number } };
 
 type Overview = {
@@ -148,6 +157,8 @@ function formatDate(value: string | null | undefined) {
 }
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  const method = init?.method ?? "GET";
+  const url = `${API_URL}${path}`;
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     credentials: "include",
@@ -160,10 +171,30 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const body = (await response.json().catch(() => null)) as ApiSuccess<T> | ApiFailure | null;
 
   if (!response.ok || !body || body.success === false) {
-    throw new Error(body && body.success === false ? body.error.message : `Request failed with ${response.status}`);
+    if (body && body.success === false) {
+      console.error("Super admin API error", {
+        status: response.status,
+        method,
+        url,
+        error: body.error
+      });
+      throw new Error(formatApiError(body.error));
+    }
+
+    throw new Error(`Request failed with ${response.status}`);
   }
 
   return body.data;
+}
+
+function formatApiError(error: ApiFailure["error"]) {
+  const fieldErrors = error.details?.fieldErrors ?? {};
+  const fieldMessages = Object.entries(fieldErrors)
+    .flatMap(([field, messages]) => messages.map((message) => `${field}: ${message}`))
+    .join(" ");
+
+  const formMessages = error.details?.formErrors?.join(" ") ?? "";
+  return [error.message, fieldMessages, formMessages].filter(Boolean).join(" ");
 }
 
 function StatCard({ title, value, detail, icon: Icon }: { title: string; value: string; detail: string; icon: React.ComponentType<{ className?: string }> }) {
@@ -185,7 +216,7 @@ function StatCard({ title, value, detail, icon: Icon }: { title: string; value: 
 
 export default function SuperAdminHomePage() {
   const [active, setActive] = React.useState<(typeof nav)[number][0]>("overview");
-  const [email, setEmail] = React.useState("admin@novachat.ai");
+  const [email, setEmail] = React.useState("superadmin@novachat.ai");
   const [password, setPassword] = React.useState("");
   const [isAuthed, setIsAuthed] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
@@ -206,9 +237,11 @@ export default function SuperAdminHomePage() {
   const loadAll = React.useCallback(async () => {
     setLoading(true);
     try {
-      const [me, overviewData, tenantData, userData, planData, subscriptionData, billingData, usageData, auditData, healthData, settingsData] =
+      const me = await apiRequest<{ user: { isSuperAdmin: boolean } }>("/auth/me");
+      if (!me.user.isSuperAdmin) throw new Error("Super admin access is required.");
+
+      const [overviewData, tenantData, userData, planData, subscriptionData, billingData, usageData, auditData, healthData, settingsData] =
         await Promise.all([
-          apiRequest<{ user: { isSuperAdmin: boolean } }>("/auth/me"),
           apiRequest<Overview>("/admin/overview"),
           apiRequest<Paginated<Tenant>>(`/admin/tenants?page=1&pageSize=50&search=${encodeURIComponent(search)}`),
           apiRequest<Paginated<UserRow>>("/admin/users?page=1&pageSize=50"),
@@ -220,7 +253,6 @@ export default function SuperAdminHomePage() {
           apiRequest<SystemHealth>("/admin/system-health"),
           apiRequest<SettingsData>("/admin/settings")
         ]);
-      if (!me.user.isSuperAdmin) throw new Error("Super admin access is required.");
       setIsAuthed(true);
       setOverview(overviewData);
       setTenants(tenantData.items);
@@ -251,7 +283,7 @@ export default function SuperAdminHomePage() {
     try {
       await apiRequest("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email: email.trim(), password })
       });
       await loadAll();
     } catch (error) {
