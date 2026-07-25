@@ -4,7 +4,8 @@ import {
   loginSchema,
   registerSchema,
   resetPasswordSchema,
-  switchTenantSchema
+  switchTenantSchema,
+  verifyEmailSchema
 } from "@novachat/shared-types";
 import { AuthService } from "../../application/services/auth-service.js";
 import { unauthorized } from "../../shared/errors/app-error.js";
@@ -30,8 +31,19 @@ export class AuthController {
     sendSuccess(res, {
       user: result.user,
       activeTenant: result.activeTenant,
-      emailVerificationRequired: result.emailVerificationRequired
+      emailVerificationRequired: result.emailVerificationRequired,
+      accountStatus: result.accountStatus,
+      verificationToken: result.verificationToken
     }, 201);
+  }
+
+  async verifyEmail(req: Request, res: Response) {
+    const result = await authService.verifyEmail(verifyEmailSchema.parse(req.body), requestMeta(req));
+    sendSuccess(res, {
+      emailVerified: true,
+      user: result.user,
+      tenants: result.tenants
+    });
   }
 
   async login(req: Request, res: Response) {

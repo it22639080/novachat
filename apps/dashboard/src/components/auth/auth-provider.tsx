@@ -24,7 +24,23 @@ type AuthContextValue = AuthState & {
 
 const AuthContext = React.createContext<AuthContextValue | null>(null);
 
-const publicPaths = ["/login", "/register", "/forgot-password", "/reset-password"];
+const publicPaths = [
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/account-status"
+];
+
+type RegisterResponse = Pick<AuthState, "user" | "activeTenant"> & {
+  emailVerificationRequired?: boolean;
+  accountStatus?: TenantAccess["status"];
+  verificationToken?: string | null;
+};
+
+const tenantCanOpenDashboard = (tenant: TenantAccess | null) =>
+  Boolean(tenant && (tenant.status === "ACTIVE" || tenant.status === "APPROVED" || !tenant.status));
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -67,6 +83,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    if (state.user?.isSuperAdmin && pathname.startsWith("/admin")) {
+      return;
+    }
+
+    if (state.user && state.activeTenant && !tenantCanOpenDashboard(state.activeTenant) && !publicPath) {
+      router.replace("/account-status" as never);
+      return;
+    }
+
     if (state.user && !state.activeTenant && !publicPath && pathname !== "/select-tenant") {
       router.replace("/select-tenant" as never);
     }
@@ -80,19 +105,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async login(input) {
         const data = await apiClient.post<Pick<AuthState, "user" | "tenants">>("/auth/login", input);
         setState({ user: data.user, tenants: data.tenants ?? [], activeTenant: null });
-        router.replace("/select-tenant" as never);
+        router.replace(data.user?.isSuperAdmin ? ("/admin" as never) : ("/select-tenant" as never));
       },
       async register(input) {
-        const data = await apiClient.post<Pick<AuthState, "user" | "activeTenant">>(
-          "/auth/register",
-          input
-        );
+        const data = await apiClient.post<RegisterResponse>("/auth/register", input);
         setState({
           user: data.user,
           tenants: data.activeTenant ? [data.activeTenant] : [],
           activeTenant: data.activeTenant
         });
-        router.replace("/dashboard");
+        if (data.verificationToken) {
+          router.replace(`/verify-email?token=${encodeURIComponent(data.verificationToken)}` as never);
+          return;
+        }
+        router.replace("/account-status" as never);
       },
       async switchTenant(tenantId: string) {
         const data = await apiClient.post<{ user: AuthState["user"]; activeTenant: TenantAccess }>(
@@ -104,7 +130,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           user: data.user,
           activeTenant: data.activeTenant
         }));
-        router.replace("/dashboard");
+        router.replace(tenantCanOpenDashboard(data.activeTenant) ? "/dashboard" : ("/account-status" as never));
       },
       async logout() {
         await apiClient.post("/auth/logout");

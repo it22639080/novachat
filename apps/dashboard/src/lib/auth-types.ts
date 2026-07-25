@@ -13,6 +13,15 @@ export type TenantAccess = {
   slug: string;
   plan?: string;
   role: Role;
+  status?:
+    | "PENDING_EMAIL_VERIFICATION"
+    | "PENDING_ADMIN_APPROVAL"
+    | "APPROVED"
+    | "ACTIVE"
+    | "REJECTED"
+    | "SUSPENDED"
+    | "EXPIRED"
+    | "ARCHIVED";
   permissions?: string[];
   createdAt?: string;
 };

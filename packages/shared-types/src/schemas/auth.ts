@@ -48,6 +48,10 @@ export const resetPasswordSchema = z.object({
   password: passwordPolicySchema
 });
 
+export const verifyEmailSchema = z.object({
+  token: z.string().min(32).max(256)
+});
+
 export const switchTenantSchema = z.object({
   tenantId: z.string().uuid()
 });
@@ -76,6 +80,7 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
 export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
 export type SwitchTenantInput = z.infer<typeof switchTenantSchema>;
 export type InviteTeamMemberInput = z.infer<typeof inviteTeamMemberSchema>;
 export type UpdateTeamMemberRoleInput = z.infer<typeof updateTeamMemberRoleSchema>;

@@ -5,6 +5,7 @@ export const tenantSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1),
   slug: z.string().min(1),
+  status: z.string().min(1).optional(),
   plan: z.string().min(1),
   role: platformRoleSchema,
   createdAt: z.string()

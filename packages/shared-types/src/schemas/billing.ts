@@ -2,9 +2,27 @@ import { z } from "zod";
 import { paginationQuerySchema } from "./pagination.js";
 
 export const billingPlanCodeSchema = z.enum(["starter", "business", "professional", "enterprise"]);
-export const subscriptionStatusSchema = z.enum(["TRIALING", "ACTIVE", "PAST_DUE", "CANCELED", "EXPIRED"]);
+export const subscriptionStatusSchema = z.enum([
+  "TRIAL",
+  "TRIALING",
+  "ACTIVE",
+  "PAST_DUE",
+  "SUSPENDED",
+  "CANCELLED",
+  "CANCELED",
+  "EXPIRED"
+]);
 export const invoiceStatusSchema = z.enum(["DRAFT", "OPEN", "PAID", "VOID", "UNCOLLECTIBLE"]);
-export const billingPaymentStatusSchema = z.enum(["PENDING", "SUCCEEDED", "FAILED", "REFUNDED"]);
+export const billingPaymentStatusSchema = z.enum([
+  "PENDING",
+  "PAID",
+  "SUCCEEDED",
+  "FAILED",
+  "OVERDUE",
+  "REFUNDED",
+  "CANCELLED",
+  "CANCELED"
+]);
 export const billingCurrencySchema = z.enum(["USD", "LKR", "INR", "EUR", "GBP"]);
 
 export const planLimitsSchema = z.object({
@@ -56,10 +74,25 @@ export const billingInvoicesQuerySchema = paginationQuerySchema.extend({
   sortBy: z.enum(["createdAt", "updatedAt", "dueAt", "total", "status"]).default("createdAt")
 });
 
+export const billingPaymentsQuerySchema = paginationQuerySchema.extend({
+  status: billingPaymentStatusSchema.optional(),
+  sortBy: z.enum(["createdAt", "updatedAt", "amount", "status"]).default("createdAt")
+});
+
+export const billingPaymentProofInputSchema = z.object({
+  invoiceId: z.string().uuid(),
+  storageUrl: z.string().trim().url(),
+  fileName: z.string().trim().min(1).max(255),
+  mimeType: z.string().trim().max(120).optional(),
+  fileSize: z.coerce.number().int().min(0).max(25 * 1024 * 1024).optional(),
+  notes: z.string().trim().max(1000).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
 export const billingWebhookSchema = z.object({
   provider: z.enum(["stripe", "payhere"]).optional(),
   eventType: z.string().trim().max(160).optional(),
-  payload: z.record(z.unknown()).optional()
+  payload: z.record(z.string(), z.unknown()).optional()
 });
 
 export type PlanLimits = z.infer<typeof planLimitsSchema>;
@@ -69,4 +102,6 @@ export type BillingSubscribeInput = z.infer<typeof billingSubscribeSchema>;
 export type BillingUpgradeInput = z.infer<typeof billingUpgradeSchema>;
 export type BillingCancelInput = z.infer<typeof billingCancelSchema>;
 export type BillingInvoicesQuery = z.infer<typeof billingInvoicesQuerySchema>;
+export type BillingPaymentsQuery = z.infer<typeof billingPaymentsQuerySchema>;
+export type BillingPaymentProofInput = z.infer<typeof billingPaymentProofInputSchema>;
 export type BillingWebhookInput = z.infer<typeof billingWebhookSchema>;

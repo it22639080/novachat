@@ -19,8 +19,13 @@ enum Role {
 }
 
 enum TenantStatus {
+  PENDING_EMAIL_VERIFICATION
+  PENDING_ADMIN_APPROVAL
+  APPROVED
+  REJECTED
   ACTIVE
   SUSPENDED
+  EXPIRED
   ARCHIVED
 }
 
@@ -31,9 +36,12 @@ enum TenantMemberStatus {
 }
 
 enum SubscriptionStatus {
+  TRIAL
   TRIALING
   ACTIVE
   PAST_DUE
+  SUSPENDED
+  CANCELLED
   CANCELED
   EXPIRED
 }
@@ -60,8 +68,20 @@ enum UsageEventType {
   AI_INPUT_TOKEN
   AI_OUTPUT_TOKEN
   WHATSAPP_MESSAGE
+  WHATSAPP_INBOUND
+  WHATSAPP_OUTBOUND
+  KNOWLEDGE_STORAGE
   CREDIT_TOPUP
   LIMIT_RESET
+}
+
+enum UsageRecordType {
+  AI_REPLY
+  AI_INPUT_TOKEN
+  AI_OUTPUT_TOKEN
+  WHATSAPP_INBOUND
+  WHATSAPP_OUTBOUND
+  KNOWLEDGE_STORAGE
 }
 
 enum CreditTopUpType {
@@ -322,9 +342,13 @@ enum InvoiceStatus {
 
 enum PaymentStatus {
   PENDING
+  PAID
   SUCCEEDED
   FAILED
+  OVERDUE
   REFUNDED
+  CANCELLED
+  CANCELED
 }
 
 enum Currency {
@@ -358,6 +382,8 @@ model User {
   auditLogs               AuditLog[]               @relation("AuditLogActor")
   notifications           Notification[]
   creditTopUps            CreditTopUp[]
+  usageRecords            UsageRecord[]
+  paymentProofs           PaymentProof[]
   aiToolCallLogs          AiToolCallLog[]
   aiAgentVersions         AiAgentVersion[]
   staffedAppointments     Appointment[]              @relation("AppointmentStaff")
@@ -395,6 +421,9 @@ model Tenant {
   whatsappAccounts       WhatsAppAccount[]
   whatsappWebSessions    WhatsAppWebSession[]
   whatsappOutboundJobs   WhatsAppOutboundJob[]
+  usageRecords           UsageRecord[]
+  monthlyUsage           MonthlyUsage[]
+  paymentProofs          PaymentProof[]
   customers              Customer[]
   conversations          Conversation[]
   messages               Message[]
@@ -428,6 +457,15 @@ model Tenant {
   notifications          Notification[]
   invoices               Invoice[]
   payments               Payment[]
+  approvedAt             DateTime?
+  approvedBy             String?
+  rejectedAt             DateTime?
+  rejectionReason        String?
+  suspendedAt            DateTime?
+  suspendedBy            String?
+  reactivatedAt          DateTime?
+  reactivatedBy          String?
+  approvalStatusChangedAt DateTime?
   createdAt              DateTime                @default(now())
   updatedAt              DateTime                @updatedAt
   deletedAt              DateTime?
@@ -488,12 +526,23 @@ model Plan {
   name          String
   description   String?
   priceMonthly  Decimal        @default(0) @db.Decimal(12, 2)
+  monthlyPrice  Decimal        @default(0) @db.Decimal(12, 2)
+  yearlyPrice   Decimal        @default(0) @db.Decimal(12, 2)
   currency      Currency       @default(USD)
   limits        Json
+  aiReplyLimit                    Int      @default(0)
+  aiInputTokenLimit               Int      @default(0)
+  aiOutputTokenLimit              Int      @default(0)
+  whatsappMessageLimit            Int      @default(0)
+  agentLimit                      Int      @default(0)
+  whatsappAccountLimit            Int      @default(0)
+  knowledgeBaseStorageLimitBytes  BigInt   @default(0)
+  featuresJson                    Json?
   isActive      Boolean        @default(true)
   subscriptions Subscription[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  archivedAt    DateTime?
   deletedAt     DateTime?
 
   @@index([isActive])
@@ -506,6 +555,12 @@ model Subscription {
   tenantId             String
   planId               String
   status               SubscriptionStatus @default(TRIALING)
+  billingCycle         String             @default("MONTHLY")
+  startAt              DateTime?
+  endAt                DateTime?
+  trialEndAt           DateTime?
+  cancelledAt          DateTime?
+  autoRenew            Boolean            @default(true)
   currentPeriodStart   DateTime
   currentPeriodEnd     DateTime
   trialEndsAt          DateTime?
@@ -642,6 +697,53 @@ model UsageEvent {
   @@index([tenantId, createdAt])
   @@index([type])
   @@index([createdAt])
+}
+
+model UsageRecord {
+  id            String          @id @default(uuid())
+  tenantId      String
+  userId        String?
+  conversationId String?
+  type          UsageRecordType
+  quantity      Int             @default(1)
+  model         String?
+  inputTokens   Int             @default(0)
+  outputTokens  Int             @default(0)
+  estimatedCost Decimal         @default(0) @db.Decimal(12, 6)
+  referenceId   String?
+  metadata      Json?
+  tenant        Tenant          @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  user          User?           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  conversation  Conversation?   @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  createdAt     DateTime        @default(now())
+
+  @@index([tenantId])
+  @@index([tenantId, type])
+  @@index([tenantId, createdAt])
+  @@index([userId])
+  @@index([conversationId])
+  @@index([referenceId])
+  @@index([createdAt])
+}
+
+model MonthlyUsage {
+  id                         String   @id @default(uuid())
+  tenantId                   String
+  periodStart                DateTime
+  periodEnd                  DateTime
+  aiRepliesUsed              Int      @default(0)
+  aiInputTokensUsed          Int      @default(0)
+  aiOutputTokensUsed         Int      @default(0)
+  whatsappMessagesUsed       Int      @default(0)
+  knowledgeStorageUsedBytes  BigInt   @default(0)
+  tenant                     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+
+  @@unique([tenantId, periodStart, periodEnd])
+  @@index([tenantId])
+  @@index([tenantId, periodStart])
+  @@index([periodEnd])
 }
 
 model AuditLog {
@@ -942,6 +1044,7 @@ model Conversation {
   appointments      Appointment[]
   aiLogs            AiLog[]
   aiToolCallLogs    AiToolCallLog[]
+  usageRecords      UsageRecord[]
   createdAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   deletedAt         DateTime?
@@ -1759,9 +1862,11 @@ model Invoice {
   tenantId       String
   subscriptionId String?
   number         String
+  invoiceNumber  String?
   status         InvoiceStatus @default(DRAFT)
   subtotal       Decimal       @default(0) @db.Decimal(12, 2)
   tax            Decimal       @default(0) @db.Decimal(12, 2)
+  discount       Decimal       @default(0) @db.Decimal(12, 2)
   total          Decimal       @default(0) @db.Decimal(12, 2)
   currency       Currency      @default(USD)
   dueAt          DateTime?
@@ -1769,6 +1874,7 @@ model Invoice {
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
   payments       Payment[]
+  paymentProofs  PaymentProof[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
@@ -1790,10 +1896,16 @@ model Payment {
   currency       Currency      @default(USD)
   status         PaymentStatus @default(PENDING)
   provider       String?
+  method         String?
   externalId     String?
+  transactionReference String?
+  reviewedBy     String?
+  reviewedAt     DateTime?
+  notes          String?
   tenant         Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   invoice        Invoice?      @relation(fields: [invoiceId], references: [id], onDelete: SetNull)
   subscription   Subscription? @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  paymentProofs  PaymentProof[]
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
   deletedAt      DateTime?
@@ -1801,6 +1913,39 @@ model Payment {
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([status])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model PaymentProof {
+  id              String        @id @default(uuid())
+  tenantId        String
+  invoiceId       String
+  paymentId       String?
+  uploadedById    String?
+  storageUrl      String
+  fileName        String
+  mimeType        String?
+  fileSize        Int?
+  status          PaymentStatus @default(PENDING)
+  reviewedBy      String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  notes           String?
+  metadata        Json?
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  payment         Payment?      @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  uploadedBy      User?         @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([invoiceId])
+  @@index([paymentId])
+  @@index([uploadedById])
   @@index([createdAt])
   @@index([deletedAt])
 }

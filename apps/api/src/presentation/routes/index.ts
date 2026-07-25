@@ -22,6 +22,7 @@ import { UsageController } from "../controllers/usage-controller.js";
 import { WhatsAppController } from "../controllers/whatsapp-controller.js";
 import { WhatsAppWebController } from "../controllers/whatsapp-web-controller.js";
 import { authenticate } from "../middleware/authenticate.js";
+import { requireActiveSubscription, requireAvailableUsage } from "../middleware/account-access.js";
 import { requirePermission } from "../middleware/require-permission.js";
 import { requireRole } from "../middleware/require-role.js";
 import { requireSuperAdmin } from "../middleware/require-super-admin.js";
@@ -78,6 +79,7 @@ apiRouter.post("/auth/register", asyncHandler(authController.register.bind(authC
 apiRouter.post("/auth/login", asyncHandler(authController.login.bind(authController)));
 apiRouter.post("/auth/logout", asyncHandler(authController.logout.bind(authController)));
 apiRouter.post("/auth/refresh", asyncHandler(authController.refresh.bind(authController)));
+apiRouter.post("/auth/verify-email", asyncHandler(authController.verifyEmail.bind(authController)));
 apiRouter.post(
   "/auth/forgot-password",
   asyncHandler(authController.forgotPassword.bind(authController))
@@ -150,6 +152,18 @@ apiRouter.get(
   asyncHandler(billingController.invoices.bind(billingController))
 );
 apiRouter.get(
+  "/billing/payments",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.payments.bind(billingController))
+);
+apiRouter.post(
+  "/billing/payment-proofs",
+  authenticate,
+  tenantContext,
+  asyncHandler(billingController.paymentProof.bind(billingController))
+);
+apiRouter.get(
   "/billing/usage",
   authenticate,
   tenantContext,
@@ -190,30 +204,40 @@ apiRouter.post(
   "/whatsapp/send-text",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(whatsAppController.sendText.bind(whatsAppController))
 );
 apiRouter.post(
   "/whatsapp/send-media",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(whatsAppController.sendMedia.bind(whatsAppController))
 );
 apiRouter.post(
   "/whatsapp/send-template",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(whatsAppController.sendTemplate.bind(whatsAppController))
 );
 apiRouter.post(
   "/whatsapp/send-buttons",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(whatsAppController.sendButtons.bind(whatsAppController))
 );
 apiRouter.post(
   "/whatsapp/send-list",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(whatsAppController.sendList.bind(whatsAppController))
 );
 
@@ -306,12 +330,16 @@ apiRouter.post(
   "/simulator/incoming-message",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(simulatorController.incomingMessage.bind(simulatorController))
 );
 apiRouter.post(
   "/simulator/outgoing-message",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(simulatorController.outgoingMessage.bind(simulatorController))
 );
 apiRouter.get(
@@ -343,6 +371,8 @@ apiRouter.post(
   "/ai/test-reply",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(aiController.testReply.bind(aiController))
 );
 apiRouter.get(
@@ -422,6 +452,8 @@ apiRouter.post(
   "/ai-agents/:id/test",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(aiAgentController.test.bind(aiAgentController))
 );
 
@@ -577,6 +609,8 @@ apiRouter.post(
   "/campaigns/:id/send-now",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(campaignController.sendNow.bind(campaignController))
 );
 apiRouter.post(
@@ -760,6 +794,8 @@ apiRouter.post(
   "/knowledge/documents",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(knowledgeController.create.bind(knowledgeController))
 );
 apiRouter.get(
@@ -796,9 +832,23 @@ apiRouter.post(
   "/knowledge/test-answer",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(knowledgeController.testAnswer.bind(knowledgeController))
 );
 
+apiRouter.get(
+  "/usage/current",
+  authenticate,
+  tenantContext,
+  asyncHandler(usageController.summary.bind(usageController))
+);
+apiRouter.get(
+  "/usage/history",
+  authenticate,
+  tenantContext,
+  asyncHandler(usageController.events.bind(usageController))
+);
 apiRouter.get(
   "/usage/summary",
   authenticate,
@@ -819,10 +869,22 @@ apiRouter.get(
 );
 
 apiRouter.get(
+  "/admin/dashboard",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.dashboard.bind(adminPlatformController))
+);
+apiRouter.get(
   "/admin/overview",
   authenticate,
   requireSuperAdmin,
   asyncHandler(adminPlatformController.overview.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/approvals",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.approvals.bind(adminPlatformController))
 );
 apiRouter.get(
   "/admin/tenants",
@@ -867,16 +929,94 @@ apiRouter.get(
   asyncHandler(adminPlatformController.users.bind(adminPlatformController))
 );
 apiRouter.get(
+  "/admin/users/:id",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.userDetail.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/users/:id/approve",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.approveUser.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/users/:id/reject",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.rejectUser.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/users/:id/suspend",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.suspendUser.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/users/:id/reactivate",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.reactivateUser.bind(adminPlatformController))
+);
+apiRouter.patch(
+  "/admin/users/:id/plan",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.changeUserPlan.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/users/:id/usage-credits",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.addUserUsageCredits.bind(adminPlatformController))
+);
+apiRouter.get(
   "/admin/plans",
   authenticate,
   requireSuperAdmin,
   asyncHandler(adminPlatformController.plans.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/plans",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.createPlan.bind(adminPlatformController))
+);
+apiRouter.patch(
+  "/admin/plans/:id",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.updatePlan.bind(adminPlatformController))
 );
 apiRouter.get(
   "/admin/subscriptions",
   authenticate,
   requireSuperAdmin,
   asyncHandler(adminPlatformController.subscriptions.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/invoices",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.invoices.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/payments",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.payments.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/payments/:id/approve",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.approvePayment.bind(adminPlatformController))
+);
+apiRouter.post(
+  "/admin/payments/:id/reject",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.rejectPayment.bind(adminPlatformController))
 );
 apiRouter.get(
   "/admin/billing",
@@ -889,6 +1029,12 @@ apiRouter.get(
   authenticate,
   requireSuperAdmin,
   asyncHandler(adminPlatformController.usage.bind(adminPlatformController))
+);
+apiRouter.get(
+  "/admin/notifications",
+  authenticate,
+  requireSuperAdmin,
+  asyncHandler(adminPlatformController.notifications.bind(adminPlatformController))
 );
 apiRouter.get(
   "/admin/audit-logs",
@@ -980,6 +1126,8 @@ apiRouter.post(
   "/inbox/conversations/:id/messages",
   authenticate,
   tenantContext,
+  requireActiveSubscription,
+  requireAvailableUsage,
   asyncHandler(inboxController.sendMessage.bind(inboxController))
 );
 apiRouter.patch(

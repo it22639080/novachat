@@ -2,6 +2,16 @@ import { prisma } from "@novachat/database";
 import type { PlatformRole, TenantSummary } from "@novachat/shared-types";
 import type { MembershipRepository, TenantMemberAccess } from "../../domain/repositories/membership-repository.js";
 
+const visibleTenantStatuses = [
+  "ACTIVE",
+  "APPROVED",
+  "PENDING_EMAIL_VERIFICATION",
+  "PENDING_ADMIN_APPROVAL",
+  "REJECTED",
+  "SUSPENDED",
+  "EXPIRED"
+] as const;
+
 export class PrismaMembershipRepository implements MembershipRepository {
   async findMembership(userId: string, tenantId: string): Promise<TenantMemberAccess | null> {
     const membership = await prisma.tenantMember.findFirst({
@@ -10,7 +20,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
         tenantId,
         status: "ACTIVE",
         tenant: {
-          status: "ACTIVE"
+          status: { in: [...visibleTenantStatuses] }
         }
       },
       select: {
@@ -35,7 +45,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
         userId,
         status: "ACTIVE",
         tenant: {
-          status: "ACTIVE"
+          status: { in: [...visibleTenantStatuses] }
         }
       },
       select: {
@@ -45,6 +55,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
             id: true,
             name: true,
             slug: true,
+            status: true,
             subscriptions: {
               where: {
                 deletedAt: null
@@ -76,6 +87,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
       id: membership.tenant.id,
       name: membership.tenant.name,
       slug: membership.tenant.slug,
+      status: membership.tenant.status,
       plan: membership.tenant.subscriptions[0]?.plan.code ?? "free",
       role: membership.role as PlatformRole,
       createdAt: membership.tenant.createdAt.toISOString()
@@ -85,12 +97,13 @@ export class PrismaMembershipRepository implements MembershipRepository {
   async listAllTenantsForPlatformAdmin(): Promise<TenantSummary[]> {
     const tenants = await prisma.tenant.findMany({
       where: {
-        status: "ACTIVE"
+        status: { in: [...visibleTenantStatuses] }
       },
       select: {
         id: true,
         name: true,
         slug: true,
+        status: true,
         subscriptions: {
           where: {
             deletedAt: null
@@ -118,6 +131,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
       id: tenant.id,
       name: tenant.name,
       slug: tenant.slug,
+      status: tenant.status,
       plan: tenant.subscriptions[0]?.plan.code ?? "free",
       role: "SUPER_ADMIN",
       createdAt: tenant.createdAt.toISOString()
@@ -128,7 +142,7 @@ export class PrismaMembershipRepository implements MembershipRepository {
     const count = await prisma.tenant.count({
       where: {
         id: tenantId,
-        status: "ACTIVE"
+        status: { in: [...visibleTenantStatuses] }
       }
     });
 

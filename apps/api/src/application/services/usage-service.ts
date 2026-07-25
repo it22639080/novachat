@@ -55,6 +55,12 @@ function dateKey(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+function currentMonthPeriod(date = new Date()) {
+  const periodStart = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+  const periodEnd = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+  return { periodStart, periodEnd };
+}
+
 function estimateAiCost(modelName: string, inputTokens: number, outputTokens: number) {
   const pricing = modelPricingUsdPerMillionTokens[normalizeModelName(modelName)] ?? {
     input: 0.15,
@@ -348,6 +354,8 @@ export class UsageService {
     promptTokens: number;
     outputTokens: number;
     conversationId?: string;
+    userId?: string;
+    referenceId?: string;
     fallbackUsed?: boolean;
   }) {
     const cost = estimateAiCost(input.modelName, input.promptTokens, input.outputTokens);
@@ -393,6 +401,80 @@ export class UsageService {
               metadata: { modelName: input.modelName }
             }
           ]
+        });
+
+        const metadata = {
+          modelName: input.modelName,
+          conversationId: input.conversationId ?? null,
+          fallbackUsed: Boolean(input.fallbackUsed)
+        };
+
+        await tx.usageRecord.createMany({
+          data: [
+            {
+              tenantId: input.tenantId,
+              userId: input.userId ?? null,
+              conversationId: input.conversationId ?? null,
+              type: "AI_REPLY",
+              quantity: 1,
+              model: input.modelName,
+              inputTokens: input.promptTokens,
+              outputTokens: input.outputTokens,
+              estimatedCost: new Prisma.Decimal(cost),
+              referenceId: input.referenceId ?? input.conversationId ?? null,
+              metadata
+            },
+            {
+              tenantId: input.tenantId,
+              userId: input.userId ?? null,
+              conversationId: input.conversationId ?? null,
+              type: "AI_INPUT_TOKEN",
+              quantity: input.promptTokens,
+              model: input.modelName,
+              inputTokens: input.promptTokens,
+              outputTokens: 0,
+              estimatedCost: new Prisma.Decimal(estimateAiCost(input.modelName, input.promptTokens, 0)),
+              referenceId: input.referenceId ?? input.conversationId ?? null,
+              metadata
+            },
+            {
+              tenantId: input.tenantId,
+              userId: input.userId ?? null,
+              conversationId: input.conversationId ?? null,
+              type: "AI_OUTPUT_TOKEN",
+              quantity: input.outputTokens,
+              model: input.modelName,
+              inputTokens: 0,
+              outputTokens: input.outputTokens,
+              estimatedCost: new Prisma.Decimal(estimateAiCost(input.modelName, 0, input.outputTokens)),
+              referenceId: input.referenceId ?? input.conversationId ?? null,
+              metadata
+            }
+          ]
+        });
+
+        const { periodStart, periodEnd } = currentMonthPeriod();
+        await tx.monthlyUsage.upsert({
+          where: {
+            tenantId_periodStart_periodEnd: {
+              tenantId: input.tenantId,
+              periodStart,
+              periodEnd
+            }
+          },
+          update: {
+            aiRepliesUsed: { increment: 1 },
+            aiInputTokensUsed: { increment: input.promptTokens },
+            aiOutputTokensUsed: { increment: input.outputTokens }
+          },
+          create: {
+            tenantId: input.tenantId,
+            periodStart,
+            periodEnd,
+            aiRepliesUsed: 1,
+            aiInputTokensUsed: input.promptTokens,
+            aiOutputTokensUsed: input.outputTokens
+          }
         });
 
         if (
@@ -481,14 +563,62 @@ export class UsageService {
   }
 
   async recordWhatsappMessage(tenantId: string, metadata: Prisma.InputJsonValue) {
-    await prisma.usageEvent.create({
-      data: {
-        tenantId,
-        type: "WHATSAPP_MESSAGE",
-        quantity: 1,
-        costEstimate: 0,
-        metadata
-      }
+    await prisma.$transaction(async (tx) => {
+      await tx.usageEvent.create({
+        data: {
+          tenantId,
+          type: "WHATSAPP_MESSAGE",
+          quantity: 1,
+          costEstimate: 0,
+          metadata
+        }
+      });
+
+      const metadataRecord: Record<string, unknown> =
+        metadata && typeof metadata === "object" && !Array.isArray(metadata)
+          ? (metadata as Record<string, unknown>)
+          : {};
+      const direction = "direction" in metadataRecord ? String(metadataRecord.direction).toUpperCase() : "OUTBOUND";
+      const conversationId =
+        "conversationId" in metadataRecord && typeof metadataRecord.conversationId === "string"
+          ? metadataRecord.conversationId
+          : null;
+      const referenceId =
+        "providerMessageId" in metadataRecord && typeof metadataRecord.providerMessageId === "string"
+          ? metadataRecord.providerMessageId
+          : conversationId;
+
+      await tx.usageRecord.create({
+        data: {
+          tenantId,
+          conversationId,
+          type: direction === "INBOUND" ? "WHATSAPP_INBOUND" : "WHATSAPP_OUTBOUND",
+          quantity: 1,
+          estimatedCost: new Prisma.Decimal(0),
+          referenceId,
+          metadata
+        }
+      });
+
+      const { periodStart, periodEnd } = currentMonthPeriod();
+      await tx.monthlyUsage.upsert({
+        where: {
+          tenantId_periodStart_periodEnd: {
+            tenantId,
+            periodStart,
+            periodEnd
+          }
+        },
+        update: {
+          whatsappMessagesUsed: { increment: 1 }
+        },
+        create: {
+          tenantId,
+          periodStart,
+          periodEnd,
+          whatsappMessagesUsed: 1
+        }
+      });
     });
   }
 

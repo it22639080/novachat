@@ -2,6 +2,8 @@ import type { Request, Response } from "express";
 import {
   billingCancelSchema,
   billingInvoicesQuerySchema,
+  billingPaymentProofInputSchema,
+  billingPaymentsQuerySchema,
   billingSubscribeSchema,
   billingUpgradeSchema,
   billingWebhookSchema,
@@ -59,6 +61,29 @@ export class BillingController {
     sendSuccess(
       res,
       await billingService.invoices(tenantIdFromRequest(req), billingInvoicesQuerySchema.parse(req.query))
+    );
+  }
+
+  async payments(req: Request, res: Response) {
+    sendSuccess(
+      res,
+      await billingService.payments(tenantIdFromRequest(req), billingPaymentsQuerySchema.parse(req.query))
+    );
+  }
+
+  async paymentProof(req: Request, res: Response) {
+    if (!req.user?.id) {
+      throw unauthorized("Authenticated user context is required");
+    }
+
+    sendSuccess(
+      res,
+      await billingService.createPaymentProof(
+        tenantIdFromRequest(req),
+        req.user.id,
+        billingPaymentProofInputSchema.parse(req.body)
+      ),
+      201
     );
   }
 

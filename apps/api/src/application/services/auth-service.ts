@@ -4,7 +4,8 @@ import type {
   LoginInput,
   RegisterInput,
   ResetPasswordInput,
-  SwitchTenantInput
+  SwitchTenantInput,
+  VerifyEmailInput
 } from "@novachat/shared-types";
 import { env } from "../../config/env.js";
 import { PasswordHasher } from "../../infrastructure/auth/password-hasher.js";
@@ -16,6 +17,16 @@ import { PermissionService } from "./permission-service.js";
 const passwordHasher = new PasswordHasher();
 const tokenService = new TokenService();
 const permissionService = new PermissionService();
+const visibleTenantStatuses = [
+  "ACTIVE",
+  "APPROVED",
+  "PENDING_EMAIL_VERIFICATION",
+  "PENDING_ADMIN_APPROVAL",
+  "REJECTED",
+  "SUSPENDED",
+  "EXPIRED"
+] as const;
+const selectableTenantStatuses = ["ACTIVE", "APPROVED"] as const;
 
 type RequestMeta = {
   ipAddress: string | undefined;
@@ -104,6 +115,8 @@ export class AuthService {
     const tenantSlugBase = input.tenantSlug ?? slugify(input.tenantName);
     const tenantSlug = await this.createAvailableTenantSlug(tenantSlugBase || `tenant-${Date.now()}`);
 
+    const emailVerificationToken = tokenService.createOpaqueToken();
+
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.create({
         data: {
@@ -116,7 +129,9 @@ export class AuthService {
       const tenant = await tx.tenant.create({
         data: {
           name: input.tenantName,
-          slug: tenantSlug
+          slug: tenantSlug,
+          status: "PENDING_EMAIL_VERIFICATION",
+          approvalStatusChangedAt: new Date()
         }
       });
 
@@ -159,7 +174,7 @@ export class AuthService {
       await tx.emailVerificationToken.create({
         data: {
           userId: user.id,
-          tokenHash: tokenService.hashToken(tokenService.createOpaqueToken()),
+          tokenHash: tokenService.hashToken(emailVerificationToken),
           expiresAt: addDays(new Date(), 1)
         }
       });
@@ -172,6 +187,19 @@ export class AuthService {
           entityType: "Tenant",
           entityId: tenant.id,
           ...auditMeta(meta)
+        }
+      });
+
+      await tx.notification.create({
+        data: {
+          tenantId: tenant.id,
+          title: "New account registration",
+          body: `${input.tenantName} registered and is waiting for email verification.`,
+          metadata: {
+            type: "NEW_REGISTRATION",
+            tenantId: tenant.id,
+            userId: user.id
+          }
         }
       });
 
@@ -192,12 +220,105 @@ export class AuthService {
         id: result.tenant.id,
         name: result.tenant.name,
         slug: result.tenant.slug,
+        status: result.tenant.status,
         role: "OWNER",
         permissions
       },
       emailVerificationRequired: true,
+      accountStatus: result.tenant.status,
+      verificationToken: env.NODE_ENV === "production" ? null : emailVerificationToken,
       accessToken,
       refreshToken
+    };
+  }
+
+  async verifyEmail(input: VerifyEmailInput, meta: RequestMeta) {
+    const tokenHash = tokenService.hashToken(input.token);
+    const verificationToken = await prisma.emailVerificationToken.findUnique({
+      where: { tokenHash },
+      include: {
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            isSuperAdmin: true
+          }
+        }
+      }
+    });
+
+    if (!verificationToken || verificationToken.usedAt || verificationToken.expiresAt <= new Date()) {
+      throw unauthorized("Invalid or expired email verification token");
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      await tx.emailVerificationToken.update({
+        where: { id: verificationToken.id },
+        data: { usedAt: now }
+      });
+      await tx.user.update({
+        where: { id: verificationToken.userId },
+        data: { emailVerifiedAt: now }
+      });
+
+      const tenants = await tx.tenant.findMany({
+        where: {
+          members: {
+            some: {
+              userId: verificationToken.userId,
+              role: "OWNER",
+              deletedAt: null
+            }
+          },
+          status: "PENDING_EMAIL_VERIFICATION",
+          deletedAt: null
+        },
+        select: { id: true, name: true, slug: true }
+      });
+
+      for (const tenant of tenants) {
+        await tx.tenant.update({
+          where: { id: tenant.id },
+          data: {
+            status: "PENDING_ADMIN_APPROVAL",
+            approvalStatusChangedAt: now
+          }
+        });
+        await tx.auditLog.create({
+          data: {
+            tenantId: tenant.id,
+            actorUserId: verificationToken.userId,
+            action: "auth.email_verified",
+            entityType: "Tenant",
+            entityId: tenant.id,
+            ...auditMeta(meta)
+          }
+        });
+        await tx.notification.create({
+          data: {
+            tenantId: tenant.id,
+            title: "Account pending approval",
+            body: `${tenant.name} verified email and is waiting for super admin approval.`,
+            metadata: {
+              type: "PENDING_ACCOUNT_APPROVAL",
+              tenantId: tenant.id,
+              userId: verificationToken.userId
+            }
+          }
+        });
+      }
+
+      return tenants;
+    });
+
+    return {
+      user: toAuthUser(verificationToken.user),
+      tenants: result.map((tenant) => ({
+        ...tenant,
+        status: "PENDING_ADMIN_APPROVAL"
+      }))
     };
   }
 
@@ -390,7 +511,7 @@ export class AuthService {
         status: "ACTIVE",
         deletedAt: null,
         tenant: {
-          status: "ACTIVE",
+          status: { in: [...selectableTenantStatuses] },
           deletedAt: null
         }
       },
@@ -407,7 +528,8 @@ export class AuthService {
           select: {
             id: true,
             name: true,
-            slug: true
+            slug: true,
+            status: true
           }
         }
       }
@@ -456,7 +578,7 @@ export class AuthService {
         status: "ACTIVE",
         deletedAt: null,
         tenant: {
-          status: "ACTIVE",
+          status: { in: [...visibleTenantStatuses] },
           deletedAt: null
         }
       },
@@ -467,6 +589,7 @@ export class AuthService {
             id: true,
             name: true,
             slug: true,
+            status: true,
             createdAt: true,
             subscriptions: {
               where: { deletedAt: null },
@@ -489,6 +612,7 @@ export class AuthService {
         id: membership.tenant.id,
         name: membership.tenant.name,
         slug: membership.tenant.slug,
+        status: membership.tenant.status,
         plan: membership.tenant.subscriptions[0]?.plan.code ?? "free",
         role: membership.role,
         permissions: await permissionService.permissionsForRole(membership.role),

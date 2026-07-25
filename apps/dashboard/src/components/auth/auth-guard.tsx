@@ -5,8 +5,10 @@ import { useAuth } from "./auth-provider";
 
 export function AuthGuard({ children }: { children: React.ReactNode }) {
   const { loading, user, activeTenant } = useAuth();
+  const approvedTenant =
+    activeTenant && (!activeTenant.status || activeTenant.status === "ACTIVE" || activeTenant.status === "APPROVED");
 
-  if (loading || !user || !activeTenant) {
+  if (loading || !user || !approvedTenant) {
     return (
       <div className="space-y-4 p-6">
         <Skeleton className="h-8 w-64" />

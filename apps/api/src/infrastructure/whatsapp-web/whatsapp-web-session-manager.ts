@@ -13,6 +13,7 @@ import makeWASocket, {
 import { env } from "../../config/env.js";
 import { AiAssistantEngineService } from "../../application/services/ai-assistant-engine-service.js";
 import { MessageProcessingService } from "../../application/services/message-processing-service.js";
+import { UsageService } from "../../application/services/usage-service.js";
 import { badRequest, notFound, serviceUnavailable } from "../../shared/errors/app-error.js";
 import { logger } from "../logger/logger.js";
 import { publishTenantEvent, publishTenantUserEvent } from "../realtime/realtime.js";
@@ -41,6 +42,7 @@ type IncomingWebMessage = {
 const instanceId = `${process.env.RAILWAY_DEPLOYMENT_ID ?? "local"}:${process.pid}:${randomUUID()}`;
 const messageProcessingService = new MessageProcessingService();
 const aiAssistantEngineService = new AiAssistantEngineService();
+const usageService = new UsageService();
 
 function lockKey(connectionId: string) {
   return `whatsapp-web:session-lock:${connectionId}`;
@@ -544,6 +546,15 @@ export class WhatsAppWebSessionManager {
         remoteJid: normalized.remoteJid,
         messageTimestamp: normalized.timestamp.toISOString()
       }
+    });
+
+    await usageService.recordWhatsappMessage(managed.tenantId, {
+      direction: "INBOUND",
+      source: "whatsapp_web_experimental",
+      connectionId: managed.connectionId,
+      conversationId: processed.conversation.id,
+      providerMessageId: normalized.externalMessageId,
+      from: normalized.senderPhone
     });
 
     await aiAssistantEngineService.handleIncomingMessage({

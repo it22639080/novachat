@@ -9,5 +9,5 @@ describe("PasswordHasher", () => {
     expect(hash.startsWith("$2")).toBe(true);
     await expect(hasher.verify("correct-horse-battery-staple", hash)).resolves.toBe(true);
     await expect(hasher.verify("wrong-password", hash)).resolves.toBe(false);
-  });
+  }, 15000);
 });

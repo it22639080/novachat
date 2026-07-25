@@ -2,6 +2,8 @@ import { Prisma, prisma } from "@novachat/database";
 import type {
   BillingCancelInput,
   BillingInvoicesQuery,
+  BillingPaymentProofInput,
+  BillingPaymentsQuery,
   BillingSubscribeInput,
   BillingUpgradeInput,
   BillingWebhookInput,
@@ -185,9 +187,44 @@ function serializeInvoice(invoice: InvoiceRecord) {
   };
 }
 
+function serializePayment(payment: PaymentRecord) {
+  return {
+    id: payment.id,
+    invoiceId: payment.invoiceId,
+    subscriptionId: payment.subscriptionId,
+    amount: decimalToNumber(payment.amount),
+    currency: payment.currency,
+    status: payment.status,
+    provider: payment.provider,
+    method: payment.method,
+    transactionReference: payment.transactionReference,
+    reviewedBy: payment.reviewedBy,
+    reviewedAt: payment.reviewedAt?.toISOString() ?? null,
+    notes: payment.notes,
+    proofs: payment.paymentProofs.map((proof) => ({
+      id: proof.id,
+      invoiceId: proof.invoiceId,
+      storageUrl: proof.storageUrl,
+      fileName: proof.fileName,
+      mimeType: proof.mimeType,
+      fileSize: proof.fileSize,
+      status: proof.status,
+      reviewedBy: proof.reviewedBy,
+      reviewedAt: proof.reviewedAt?.toISOString() ?? null,
+      rejectionReason: proof.rejectionReason,
+      notes: proof.notes,
+      createdAt: proof.createdAt.toISOString(),
+      updatedAt: proof.updatedAt.toISOString()
+    })),
+    createdAt: payment.createdAt.toISOString(),
+    updatedAt: payment.updatedAt.toISOString()
+  };
+}
+
 type PlanRecord = Prisma.PlanGetPayload<Record<string, never>>;
 type SubscriptionRecord = Prisma.SubscriptionGetPayload<{ include: { plan: true } }>;
 type InvoiceRecord = Prisma.InvoiceGetPayload<{ include: { payments: true } }>;
+type PaymentRecord = Prisma.PaymentGetPayload<{ include: { paymentProofs: true } }>;
 
 export class BillingService {
   async ensureDefaultPlans(tx: Prisma.TransactionClient = prisma) {
@@ -330,6 +367,123 @@ export class BillingService {
       })
     ]);
     return { items: items.map(serializeInvoice), pagination: pagination.meta(total) };
+  }
+
+  async payments(tenantId: string, query: BillingPaymentsQuery) {
+    const pagination = createPagination(query);
+    const where: Prisma.PaymentWhereInput = {
+      tenantId,
+      deletedAt: null,
+      ...(query.status ? { status: query.status } : {})
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.payment.count({ where }),
+      prisma.payment.findMany({
+        where,
+        include: { paymentProofs: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } } },
+        orderBy: { [query.sortBy]: query.sortDirection },
+        skip: pagination.skip,
+        take: pagination.take
+      })
+    ]);
+    return { items: items.map(serializePayment), pagination: pagination.meta(total) };
+  }
+
+  async createPaymentProof(tenantId: string, userId: string, input: BillingPaymentProofInput) {
+    const result = await prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.findFirst({
+        where: { id: input.invoiceId, tenantId, deletedAt: null },
+        include: { subscription: true }
+      });
+      if (!invoice) throw notFound("Invoice not found");
+      if (invoice.status === "PAID") {
+        throw badRequest("INVOICE_ALREADY_PAID", "This invoice is already paid.");
+      }
+
+      const payment =
+        (await tx.payment.findFirst({
+          where: { tenantId, invoiceId: invoice.id, deletedAt: null, status: "PENDING" },
+          orderBy: { createdAt: "desc" }
+        })) ??
+        (await tx.payment.create({
+          data: {
+            tenantId,
+            invoiceId: invoice.id,
+            subscriptionId: invoice.subscriptionId,
+            amount: invoice.total,
+            currency: invoice.currency,
+            status: "PENDING",
+            provider: "manual",
+            method: "BANK_TRANSFER",
+            notes: input.notes ?? null
+          }
+        }));
+
+      const proof = await tx.paymentProof.create({
+        data: {
+          tenantId,
+          invoiceId: invoice.id,
+          paymentId: payment.id,
+          uploadedById: userId,
+          storageUrl: input.storageUrl,
+          fileName: input.fileName,
+          mimeType: input.mimeType ?? null,
+          fileSize: input.fileSize ?? null,
+          status: "PENDING",
+          notes: input.notes ?? null,
+          metadata: (input.metadata ?? {}) as Prisma.InputJsonValue
+        }
+      });
+
+      await tx.notification.create({
+        data: {
+          tenantId,
+          title: "Payment proof uploaded",
+          body: `A payment receipt was uploaded for invoice ${invoice.number}.`,
+          metadata: {
+            invoiceId: invoice.id,
+            paymentId: payment.id,
+            paymentProofId: proof.id
+          } as Prisma.InputJsonValue
+        }
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorUserId: userId,
+          action: "billing.payment_proof_uploaded",
+          entityType: "PaymentProof",
+          entityId: proof.id,
+          metadata: {
+            invoiceId: invoice.id,
+            paymentId: payment.id,
+            fileName: input.fileName
+          } as Prisma.InputJsonValue
+        }
+      });
+
+      return {
+        payment: await tx.payment.findFirstOrThrow({
+          where: { id: payment.id },
+          include: { paymentProofs: { where: { deletedAt: null }, orderBy: { createdAt: "desc" } } }
+        }),
+        proof
+      };
+    });
+
+    return {
+      payment: serializePayment(result.payment),
+      proof: {
+        id: result.proof.id,
+        invoiceId: result.proof.invoiceId,
+        paymentId: result.proof.paymentId,
+        fileName: result.proof.fileName,
+        status: result.proof.status,
+        createdAt: result.proof.createdAt.toISOString()
+      },
+      message: "Payment receipt uploaded. An admin will review it before activating the subscription."
+    };
   }
 
   async usage(tenantId: string) {
