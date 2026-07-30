@@ -1,17 +1,58 @@
 import { z } from "zod";
-import { paginationQuerySchema } from "./pagination.js";
+import { emptyStringToUndefined, paginationQuerySchema } from "./pagination.js";
 
 export const inboxConversationStatusSchema = z.enum(["OPEN", "PENDING", "RESOLVED", "CLOSED"]);
 export const inboxMessageTypeSchema = z.enum(["text", "image", "document"]);
 
+const optionalUuidSchema = z.preprocess(emptyStringToUndefined, z.string().uuid().optional());
+
+const optionalDateSchema = z.preprocess(emptyStringToUndefined, z.coerce.date().optional());
+
+const optionalBooleanQuerySchema = z.preprocess((value) => {
+  const normalized = emptyStringToUndefined(value);
+
+  if (normalized === undefined || typeof normalized === "boolean") {
+    return normalized;
+  }
+
+  if (typeof normalized === "string") {
+    const lowerValue = normalized.toLowerCase();
+
+    if (lowerValue === "true") {
+      return true;
+    }
+
+    if (lowerValue === "false") {
+      return false;
+    }
+  }
+
+  return normalized;
+}, z.boolean().optional());
+
+const inboxConversationStatusQuerySchema = z.preprocess((value) => {
+  const normalized = emptyStringToUndefined(value);
+  return typeof normalized === "string" ? normalized.toUpperCase() : normalized;
+}, inboxConversationStatusSchema.optional());
+
+const inboxAssigneeQuerySchema = z.preprocess(
+  emptyStringToUndefined,
+  z.string().uuid().or(z.enum(["me", "unassigned"])).optional()
+);
+
+const inboxConversationSortByQuerySchema = z.preprocess(
+  emptyStringToUndefined,
+  z.enum(["lastMessageAt", "createdAt", "customerName", "status"]).default("lastMessageAt")
+);
+
 export const inboxConversationQuerySchema = paginationQuerySchema.extend({
-  status: inboxConversationStatusSchema.optional(),
-  assigneeId: z.string().uuid().or(z.enum(["me", "unassigned"])).optional(),
-  unread: z.coerce.boolean().optional(),
-  tagId: z.string().uuid().optional(),
-  dateFrom: z.coerce.date().optional(),
-  dateTo: z.coerce.date().optional(),
-  sortBy: z.enum(["lastMessageAt", "createdAt", "customerName", "status"]).default("lastMessageAt")
+  status: inboxConversationStatusQuerySchema,
+  assigneeId: inboxAssigneeQuerySchema,
+  unread: optionalBooleanQuerySchema,
+  tagId: optionalUuidSchema,
+  dateFrom: optionalDateSchema,
+  dateTo: optionalDateSchema,
+  sortBy: inboxConversationSortByQuerySchema
 });
 
 export const inboxConversationIdParamSchema = z.object({
